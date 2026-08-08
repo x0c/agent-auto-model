@@ -14,7 +14,7 @@ import (
 )
 
 // 由 -ldflags 注入。
-var version = "0.1.0"
+var version = "0.1.1"
 
 func main() {
 	os.Exit(run(os.Args))

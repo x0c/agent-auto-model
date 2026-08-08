@@ -6,9 +6,13 @@
 
 锚点（Agent `2026.08.04-aaa8809` 核实）：
 
-- `setCurrentModel(e,t){return p(this,void 0,void 0,(function*(){`
-- `setCurrentModelWithParameters(e,t,r){return p(this,void 0,void 0,(function*(){`
-- `setMetadata(e,t){this.metadataStore.set(e,t)}`
+- `setCurrentModel` / `setCurrentModelWithParameters` / `setModelFromStoredId`（抓模型管理器 + 配置）
+- `getCurrentModel(){return this.deriveCurrentModelDetails()`（Mode 早于写模型时也能 stash）
+- `setMetadata(e,t){this.metadataStore.set(e,t)}`（Mode 变化入口）
+
+切模型必须走 `setModelFromStoredId(modelId, configProvider)`（或带第三参的 `setCurrentModelWithParameters`）；管理器上有 `configProvider`。只调两参会失败。
+
+真机验收：`CURSOR_MODE_MODEL_DEBUG=1 agent --mode plan --print …`，看资产目录 `sync.log` 是否出现 `apply_result` 且 `ok:true`。
 
 升级 Cursor Agent 后先跑 `cursor-mode-model status`。锚点未命中则自动切换失效，但 Agent 仍可正常用（故障开放）。
 

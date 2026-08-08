@@ -13,6 +13,8 @@ import (
 const (
 	SetCurrentModel       = "setCurrentModel(e,t){return p(this,void 0,void 0,(function*(){"
 	SetCurrentModelParams = "setCurrentModelWithParameters(e,t,r){return p(this,void 0,void 0,(function*(){"
+	SetModelFromStoredID  = "setModelFromStoredId(e,t){return p(this,void 0,void 0,(function*(){"
+	GetCurrentModel       = "getCurrentModel(){return this.deriveCurrentModelDetails()"
 	SetMetadata           = "setMetadata(e,t){this.metadataStore.set(e,t)}"
 )
 
@@ -38,9 +40,13 @@ func Check(home string) Result {
 	}
 	out.Anchors["setCurrentModel"] = strings.Contains(blob, SetCurrentModel)
 	out.Anchors["setCurrentModelWithParameters"] = strings.Contains(blob, SetCurrentModelParams)
+	out.Anchors["setModelFromStoredId"] = strings.Contains(blob, SetModelFromStoredID)
+	out.Anchors["getCurrentModel"] = strings.Contains(blob, GetCurrentModel)
 	out.Anchors["setMetadata"] = strings.Contains(blob, SetMetadata)
 	out.OK = out.Anchors["setCurrentModel"] &&
 		out.Anchors["setCurrentModelWithParameters"] &&
+		out.Anchors["setModelFromStoredId"] &&
+		out.Anchors["getCurrentModel"] &&
 		out.Anchors["setMetadata"]
 	return out
 }

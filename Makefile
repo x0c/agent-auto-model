@@ -1,4 +1,4 @@
-VERSION ?= 0.1.0
+VERSION ?= 0.1.1
 BIN ?= $(HOME)/.local/bin/cursor-mode-model
 
 .PHONY: test build install smoke
