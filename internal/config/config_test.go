@@ -61,3 +61,35 @@ func TestLoadEnabledFalseHonored(t *testing.T) {
 		t.Fatal("enabled=false 应保留")
 	}
 }
+
+func TestLoadStrictDefaultFalse(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
+	path := paths.UserConfigFile(home)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"version":1,"enabled":true}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := Load(home)
+	if got.Strict {
+		t.Fatal("strict 缺省应为 false")
+	}
+}
+
+func TestLoadStrictTrue(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
+	cfg := Default()
+	cfg.Strict = true
+	if err := Save(home, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got := Load(home)
+	if !got.Strict {
+		t.Fatal("strict=true 应保留")
+	}
+}

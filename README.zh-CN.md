@@ -23,9 +23,20 @@ cursor-mode-model status
 agent
 ```
 
+升级后，**升级前就一直开着的会话需要重启**才会吃到新挂钩。
+
 ## 配置
 
-`~/.config/cursor-mode-model/config.json`（可用文本编辑器改映射）。
+`~/.config/cursor-mode-model/config.json`
+
+- `strict: true`：发送前纠正失败时直接中断本轮（默认只告警不打断）
+- 决策审计日志（不含对话正文）：`~/.local/share/cursor-mode-model/assets/decisions.log`
+
+## 保证范围
+
+会管：主对话按 Mode 发请求、接着聊旧会话时也能认出 Mode、界面与「上次模型」记忆跟真实值对齐。
+
+不管：探索/子代理用哪颗模型（保持 Cursor 原样）；仍在跑旧挂钩的长期会话（需重启）。
 
 ## 关闭
 

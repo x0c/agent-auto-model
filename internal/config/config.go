@@ -22,6 +22,7 @@ var DefaultModels = map[string]string{
 type Config struct {
 	Version int               `json:"version"`
 	Enabled bool              `json:"enabled"`
+	Strict  bool              `json:"strict"`
 	Models  map[string]string `json:"models"`
 }
 
@@ -31,7 +32,7 @@ func Default() Config {
 	for k, v := range DefaultModels {
 		models[k] = v
 	}
-	return Config{Version: 1, Enabled: true, Models: models}
+	return Config{Version: 1, Enabled: true, Strict: false, Models: models}
 }
 
 // Load 读取用户配置；不存在或损坏时返回默认。
@@ -45,6 +46,7 @@ func Load(home string) Config {
 	var raw struct {
 		Version int               `json:"version"`
 		Enabled *bool             `json:"enabled"`
+		Strict  *bool             `json:"strict"`
 		Models  map[string]string `json:"models"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -56,6 +58,9 @@ func Load(home string) Config {
 	}
 	if raw.Enabled != nil {
 		out.Enabled = *raw.Enabled
+	}
+	if raw.Strict != nil {
+		out.Strict = *raw.Strict
 	}
 	if len(raw.Models) > 0 {
 		for k, v := range raw.Models {

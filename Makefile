@@ -1,10 +1,11 @@
-VERSION ?= 0.1.2
+VERSION ?= 0.1.3
 BIN ?= $(HOME)/.local/bin/cursor-mode-model
 
 .PHONY: test build install smoke
 
 test:
 	go test -race ./...
+	CURSOR_MODE_MODEL_UNIT_TEST=1 node --test ./internal/assets/register.test.mjs
 
 build:
 	go build -ldflags="-X main.version=$(VERSION)" -o bin/cursor-mode-model ./cmd/cursor-mode-model

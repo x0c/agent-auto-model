@@ -14,7 +14,7 @@ import (
 )
 
 // 由 -ldflags 注入。
-var version = "0.1.2"
+var version = "0.1.3"
 
 func main() {
 	os.Exit(run(os.Args))
@@ -92,6 +92,7 @@ func cmdStatus(args []string) int {
 	fmt.Printf("  包装目录：%s\n", p.WrapperBin)
 	fmt.Printf("  PATH 上的 agent：%s\n", emptyDash(p.PathAgent))
 	fmt.Printf("  官方 agent：%s\n", emptyDash(p.RealAgent))
+	fmt.Printf("  严格模式：%v\n", p.Strict)
 	fmt.Printf("  Plan → %s\n", p.Models["plan"])
 	fmt.Printf("  其它 → %s\n", p.Models["default"])
 	parts := make([]string, 0, len(p.Anchors.Anchors))
@@ -103,6 +104,13 @@ func cmdStatus(args []string) int {
 		parts = append(parts, k+"="+mark)
 	}
 	fmt.Printf("  锚点：%s\n", strings.Join(parts, ", "))
+	if len(p.RecentDecisions) > 0 {
+		fmt.Println("  最近决策：")
+		for _, d := range p.RecentDecisions {
+			fmt.Printf("    - ev=%s mode=%s expected=%s actual=%s\n",
+				emptyDash(d.Ev), emptyDash(d.Mode), emptyDash(d.Expected), emptyDash(d.Actual))
+		}
+	}
 	if p.Hint != "" {
 		fmt.Printf("  提示：%s\n", p.Hint)
 	}

@@ -4,41 +4,66 @@
 
 预加载脚本：`internal/assets/register.mjs`（经 `go:embed` 打进二进制，install/exec 时落到 `~/.local/share/cursor-mode-model/assets/`）。
 
-锚点（Agent `2026.08.04-aaa8809` 核实）：
+**锚点字符串唯一来源**：`internal/assets/anchors.json`（Go 的 `anchors.Check` 与预加载 `patchSource` 都读它；禁止在两处各写一份）。
+
+挂钩点（Agent `2026.08.04-aaa8809` 核实）：
 
 - `setCurrentModel` / `setCurrentModelWithParameters` / `setModelFromStoredId`（抓模型管理器 + 配置；后者调用时武装恢复后对齐）
 - `getCurrentModel(){return this.deriveCurrentModelDetails()`（Mode 早于写模型时也能 stash）
-- `setMetadata(e,t){this.metadataStore.set(e,t)}`（Mode 变化入口；并 stash 会话 store）
+- `setMetadata(e,t){this.metadataStore.set(e,t)}`（Mode 变化入口；stash 会话 store，并 `subscribeToMetadata('mode')`）
 - `buildRequestedModel(){var e,t,r,n;const o=this.currentSelectedModel;`（**发送前强制**按当前 Mode 覆盖 `modelId`）
 
-切模型必须走 `setModelFromStoredId(modelId, configProvider)`（或带第三参的 `setCurrentModelWithParameters`）；管理器上有 `configProvider`。只调两参会失败。`ok:false` 必须当失败并尝试降级 API，不能假装成功。
+### 模式识别（P0）
 
-Mode 切换成功后还会写入会话 `lastUsedModel`，避免 resume 的 `model_restore` 用旧模型把选择打回去。
+- **权威值**：`store.getMetadata('mode')`（resume 时元数据从磁盘加载，不一定再触发 `setMetadata`）。
+- **事件缓存**：`setMetadata` / 订阅回调写入 `__cursorModeModelLastMode`。
+- **禁止瞎猜**：两者都没有时**不强制**（旧版回退 `default` 会把 Plan resume 压成 Grok，属回归）。
 
-真机验收（两层都要看）：
+### 模型归一
 
-1. `CURSOR_MODE_MODEL_DEBUG=1` 启动后，资产目录 `sync.log` 出现 `before_build` / `apply_result`。
-2. 会话落盘里助手消息的 `providerOptions.cursor.modelName`（或 meta 里的 `lastUsedModel`）与 Mode 映射一致（不能只看界面选择器）。
+`claude-opus-5-thinking-high` 经官方 `mapModelToParameterizedSelection` 会变成 `claude-opus-5` + thinking/effort 参数。比较与强制必须用归一后的 id，并保留 `getParametersForModel` 参数，否则会悄悄降档。
 
-CLI `--mode` 只接受 `plan` / `ask`（Ask 在内部是 `search`）；**Agent 模式不要传 `--mode`**（没有 `default` 这个合法参数）。无头验收示例：
+### 发送前强制与严格模式
+
+- 默认：发送前纠正内存选择，并异步走官方 API；失败只告警。
+- 配置 `"strict": true`：纠正后仍不等价则**抛错阻断本轮发送**。
+- 审计日志：`~/.local/share/cursor-mode-model/assets/decisions.log`（约 1MB 轮转，只记决策元数据）。
+
+切模型必须走 `setModelFromStoredId(modelId, configProvider)`（或带第三参的 `setCurrentModelWithParameters`）。`ok:false` 必须当失败并尝试降级 API。成功后 `notifyListeners()` + 写 `lastUsedModel`（归一后的真实 id）。
+
+### 明确不做
+
+子任务 / 探索子代理（`exploreSubagentModel`）保持 Cursor 原样，不按模式绑定。
+
+## 真机验收
+
+两层都要看：
+
+1. `decisions.log` /（调试时）`sync.log` 出现 `before_build` / `corrected` / `apply_done`。
+2. 会话落盘 `providerOptions.cursor.modelName` 与 meta `lastUsedModel` 与 Mode 映射一致（**不能只看界面**）。
+
+**必须含 resume 用例**（不带 `--mode`）：
 
 ```bash
 export PATH="$HOME/.local/share/cursor-mode-model/bin:$PATH"
-CURSOR_MODE_MODEL_DEBUG=1 agent --print --force '…'          # 期望 Grok + before_build
-CURSOR_MODE_MODEL_DEBUG=1 agent --mode plan --print --force '…'  # 期望 Opus
-CURSOR_MODE_MODEL_DEBUG=1 agent --mode ask --print --force '…'   # 期望 Grok
+# 新建 Plan
+agent --mode plan --print --force '只回复：PLAN_OK'
+# 记下 chat id，然后 resume 且不带 --mode —— 仍须 Opus
+agent --resume <id> --print --force '只回复：PLAN_RESUME_OK'
 ```
 
-注意：同一会话 id 在不同工作目录 resume 时，落盘可能写到另一份 `~/.cursor/chats/<hash>/<id>/`；查模型要以**本次实际写入**的那份 store 为准。
+CLI `--mode` 只接受 `plan` / `ask`（Ask 内部是 `search`）；Agent 模式不要传 `--mode`。
 
-升级 Cursor Agent 后先跑 `cursor-mode-model status`。锚点未命中则自动切换失效，但 Agent 仍可正常用（故障开放）。`status.active` 要求包装器真正在 PATH 上生效，不是只看配置开关。
+注意：同一会话 id 在不同工作目录 resume 时，落盘可能写到另一份 `~/.cursor/chats/<hash>/<id>/`。
+
+升级 Cursor Agent 后先跑 `cursor-mode-model status`。`status.active` 要求包装器真正在 PATH 上生效。长期挂着的旧会话需**重启**才会吃到新挂钩。
 
 ## 包装与 PATH
 
-`install` 在 `~/.local/share/cursor-mode-model/bin/` 写入 `agent` / `cursor-agent` 壳脚本，并尽量把该目录 prepend 进 `~/.zshrc` / `~/.bashrc`。`uninstall` 必须同时清掉这些 shell PATH 挂钩。官方入口仍在 `~/.local/share/cursor-agent/versions/<ver>/cursor-agent`；包装通过扫 versions 目录找最新一份，不依赖会被 `agent update` 改写的 `~/.local/bin` 符号链接。
+`install` 在 `~/.local/share/cursor-mode-model/bin/` 写入包装脚本并尽量 prepend 进 shell rc；`uninstall` 必须清掉这些挂钩。官方入口在 `~/.local/share/cursor-agent/versions/<ver>/cursor-agent`。
 
-shell **函数 / alias 优先于 PATH**：若用户或其它工具给 `agent` 定义了函数，包装器不会生效——`status` 的 `wrapper_effective` 会反映这一点。
+shell **函数 / alias 优先于 PATH**——`status.wrapper_effective` 会反映。
 
 ## 与 pickup 的边界
 
-本工具独立。即使用户同时装了 pickup 的命令拦截，只要包装目录在 PATH 更靠前，或 pickup 最终 `execvp("agent")` 走到本包装，Mode→模型就会生效。禁止把本逻辑并回 pickup 仓库。
+本工具独立。禁止把本逻辑并回 pickup 仓库。

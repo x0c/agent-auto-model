@@ -1,22 +1,16 @@
 // Package anchors 检查当前已装 Agent 打包 JS 是否仍含挂钩锚点。
+// 锚点字符串唯一来源：internal/assets/anchors.json。
 package anchors
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"forgejo.caozc.top/Max/cursor-mode-model/internal/agentbin"
-)
-
-const (
-	SetCurrentModel       = "setCurrentModel(e,t){return p(this,void 0,void 0,(function*(){"
-	SetCurrentModelParams = "setCurrentModelWithParameters(e,t,r){return p(this,void 0,void 0,(function*(){"
-	SetModelFromStoredID  = "setModelFromStoredId(e,t){return p(this,void 0,void 0,(function*(){"
-	GetCurrentModel       = "getCurrentModel(){return this.deriveCurrentModelDetails()"
-	SetMetadata           = "setMetadata(e,t){this.metadataStore.set(e,t)}"
-	BuildRequestedModel   = "buildRequestedModel(){var e,t,r,n;const o=this.currentSelectedModel;"
+	"forgejo.caozc.top/Max/cursor-mode-model/internal/assets"
 )
 
 // Result 锚点扫描结果。
@@ -26,8 +20,16 @@ type Result struct {
 	OK         bool            `json:"ok"`
 }
 
+// Definitions 返回 name→源码片段。
+func Definitions() map[string]string {
+	out := map[string]string{}
+	_ = json.Unmarshal(assets.AnchorsJSON(), &out)
+	return out
+}
+
 // Check 扫描官方 Agent 版本目录。
 func Check(home string) Result {
+	defs := Definitions()
 	out := Result{Anchors: map[string]bool{}}
 	agent, err := agentbin.Find(home)
 	if err != nil {
@@ -39,18 +41,15 @@ func Check(home string) Result {
 	if err != nil {
 		return out
 	}
-	out.Anchors["setCurrentModel"] = strings.Contains(blob, SetCurrentModel)
-	out.Anchors["setCurrentModelWithParameters"] = strings.Contains(blob, SetCurrentModelParams)
-	out.Anchors["setModelFromStoredId"] = strings.Contains(blob, SetModelFromStoredID)
-	out.Anchors["getCurrentModel"] = strings.Contains(blob, GetCurrentModel)
-	out.Anchors["setMetadata"] = strings.Contains(blob, SetMetadata)
-	out.Anchors["buildRequestedModel"] = strings.Contains(blob, BuildRequestedModel)
-	out.OK = out.Anchors["setCurrentModel"] &&
-		out.Anchors["setCurrentModelWithParameters"] &&
-		out.Anchors["setModelFromStoredId"] &&
-		out.Anchors["getCurrentModel"] &&
-		out.Anchors["setMetadata"] &&
-		out.Anchors["buildRequestedModel"]
+	ok := len(defs) > 0
+	for name, needle := range defs {
+		hit := needle != "" && strings.Contains(blob, needle)
+		out.Anchors[name] = hit
+		if !hit {
+			ok = false
+		}
+	}
+	out.OK = ok
 	return out
 }
 

@@ -23,6 +23,8 @@ cursor-mode-model status
 agent   # wrapped; Mode changes switch models
 ```
 
+Long-running sessions started before an upgrade must be **restarted** to pick up the new preload.
+
 ## Config
 
 `~/.config/cursor-mode-model/config.json`
@@ -31,6 +33,7 @@ agent   # wrapped; Mode changes switch models
 {
   "version": 1,
   "enabled": true,
+  "strict": false,
   "models": {
     "plan": "claude-opus-5-thinking-high",
     "default": "cursor-grok-4.5-high-fast",
@@ -39,6 +42,17 @@ agent   # wrapped; Mode changes switch models
   }
 }
 ```
+
+- `strict: true` — if a send cannot be corrected to the Mode-mapped model, the turn is aborted with an error (default is warn-only).
+- Decision audit log (metadata only): `~/.local/share/cursor-mode-model/assets/decisions.log`
+
+## Guarantee (what is / isn’t covered)
+
+| Covered | Not covered |
+|---|---|
+| Main chat turns: Mode → request model | Explore / subagent model (`exploreSubagentModel`) — left to Cursor |
+| Resume without `--mode` (reads session Mode) | Sessions still running old preload (restart required) |
+| UI + `lastUsedModel` kept in sync after force | |
 
 ## Disable
 
