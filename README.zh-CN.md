@@ -1,6 +1,6 @@
 # cursor-mode-model
 
-**Cursor Agent 命令行**的独立补丁：会话 Mode 一变就自动换模型。
+**Cursor Agent 命令行**的独立补丁：会话 Mode 一变就自动换模型，并在**真正发请求前**再强制一次（不只改界面选择器）。
 
 | Mode | 默认模型 |
 |---|---|

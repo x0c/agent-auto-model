@@ -16,6 +16,7 @@ const (
 	SetModelFromStoredID  = "setModelFromStoredId(e,t){return p(this,void 0,void 0,(function*(){"
 	GetCurrentModel       = "getCurrentModel(){return this.deriveCurrentModelDetails()"
 	SetMetadata           = "setMetadata(e,t){this.metadataStore.set(e,t)}"
+	BuildRequestedModel   = "buildRequestedModel(){var e,t,r,n;const o=this.currentSelectedModel;"
 )
 
 // Result 锚点扫描结果。
@@ -43,11 +44,13 @@ func Check(home string) Result {
 	out.Anchors["setModelFromStoredId"] = strings.Contains(blob, SetModelFromStoredID)
 	out.Anchors["getCurrentModel"] = strings.Contains(blob, GetCurrentModel)
 	out.Anchors["setMetadata"] = strings.Contains(blob, SetMetadata)
+	out.Anchors["buildRequestedModel"] = strings.Contains(blob, BuildRequestedModel)
 	out.OK = out.Anchors["setCurrentModel"] &&
 		out.Anchors["setCurrentModelWithParameters"] &&
 		out.Anchors["setModelFromStoredId"] &&
 		out.Anchors["getCurrentModel"] &&
-		out.Anchors["setMetadata"]
+		out.Anchors["setMetadata"] &&
+		out.Anchors["buildRequestedModel"]
 	return out
 }
 

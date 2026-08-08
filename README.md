@@ -1,6 +1,6 @@
 # cursor-mode-model
 
-Independent shim for **Cursor Agent CLI**: when session Mode changes, automatically switch model.
+Independent shim for **Cursor Agent CLI**: when session Mode changes, automatically switch model — and **force the model on the real request path**, not only in the UI picker.
 
 - Plan → `claude-opus-5-thinking-high`
 - Agent / Ask / Debug → `cursor-grok-4.5-high-fast`

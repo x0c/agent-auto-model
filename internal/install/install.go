@@ -88,6 +88,7 @@ func Uninstall(home string, dryRun bool) (Result, error) {
 	}
 	_ = os.Remove(filepath.Join(paths.WrapperBinDir(home), "agent"))
 	_ = os.Remove(filepath.Join(paths.WrapperBinDir(home), "cursor-agent"))
+	_ = removePathSnippets(home)
 	st := State{Enabled: false}
 	if prev, err := readState(home); err == nil {
 		st.SelfBinary = prev.SelfBinary
@@ -119,6 +120,8 @@ func pathExportLine(home string) string {
 	return fmt.Sprintf(`export PATH=%q:$PATH`, paths.WrapperBinDir(home))
 }
 
+const pathMarker = "# cursor-mode-model PATH"
+
 func ensurePathSnippet(home string) error {
 	snippetDir := filepath.Join(paths.DataDir(home), "shell")
 	if err := os.MkdirAll(snippetDir, 0o755); err != nil {
@@ -130,7 +133,6 @@ func ensurePathSnippet(home string) error {
 		return err
 	}
 	// 追加到常见 shell rc（幂等）
-	marker := "# cursor-mode-model PATH"
 	line := fmt.Sprintf(`[ -f %q ] && . %q`, snippet, snippet)
 	for _, rcName := range []string{".zshrc", ".bashrc", ".zprofile"} {
 		rc := filepath.Join(home, rcName)
@@ -142,15 +144,67 @@ func ensurePathSnippet(home string) error {
 			return err
 		}
 		text := string(data)
-		if strings.Contains(text, marker) {
+		if strings.Contains(text, pathMarker) {
 			continue
 		}
-		add := "\n" + marker + "\n" + line + "\n"
+		add := "\n" + pathMarker + "\n" + line + "\n"
 		if err := os.WriteFile(rc, []byte(text+add), 0o644); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func removePathSnippets(home string) error {
+	snippet := filepath.Join(paths.DataDir(home), "shell", "path.sh")
+	_ = os.Remove(snippet)
+	for _, rcName := range []string{".zshrc", ".bashrc", ".zprofile"} {
+		rc := filepath.Join(home, rcName)
+		data, err := os.ReadFile(rc)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		cleaned := stripPathBlock(string(data))
+		if cleaned == string(data) {
+			continue
+		}
+		if err := os.WriteFile(rc, []byte(cleaned), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func stripPathBlock(text string) string {
+	lines := strings.Split(text, "\n")
+	out := make([]string, 0, len(lines))
+	skipNext := false
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		if strings.TrimSpace(line) == pathMarker {
+			skipNext = true
+			continue
+		}
+		if skipNext {
+			skipNext = false
+			if strings.Contains(line, "cursor-mode-model") && strings.Contains(line, "path.sh") {
+				continue
+			}
+			// 标记后不是预期行，仍丢掉标记本身，保留本行
+			out = append(out, line)
+			continue
+		}
+		out = append(out, line)
+	}
+	cleaned := strings.Join(out, "\n")
+	// 去掉末尾因删除多出来的多余空行（最多压一层）
+	for strings.HasSuffix(cleaned, "\n\n\n") {
+		cleaned = strings.TrimSuffix(cleaned, "\n")
+	}
+	return cleaned
 }
 
 func writeState(home string, st State) error {

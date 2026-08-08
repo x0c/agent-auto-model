@@ -29,7 +29,7 @@
 
 - **与 pickup 完全解耦**：不得 import、调用或依赖 pickup；不得把本能力塞进 pickup 启动链。
 - 外层：PATH 前置包装（`~/.local/share/cursor-mode-model/bin/{agent,cursor-agent}`）注入 `NODE_OPTIONS=--import=…` 后 `exec` 官方 Agent。
-- 内层：Node `registerHooks` 改写 Agent 打包 JS，在 `setMetadata("mode", …)` 后按配置切模型。
+- 内层：Node `registerHooks` 改写 Agent 打包 JS：`setMetadata("mode", …)` 后切模型；`buildRequestedModel` 发送前再按 Mode 强制 `modelId`；成功后写 `lastUsedModel`，并对 resume `model_restore` 做延迟对齐。
 - 显式 `--model`：仍可注入预加载，但设置 `CURSOR_MODE_MODEL_LOCK=1`，本会话不自动切换。
 - 总开关：`CURSOR_MODE_MODEL=0` 或配置 `enabled: false`。
 - 锚点漂移：故障开放（不阻断 Agent）；`status` 可诊断。

@@ -35,13 +35,18 @@ func Default() Config {
 }
 
 // Load 读取用户配置；不存在或损坏时返回默认。
+// enabled 字段缺省时按启用处理（避免 JSON 布尔零值把缺省当成关闭）。
 func Load(home string) Config {
 	path := paths.UserConfigFile(home)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Default()
 	}
-	var raw Config
+	var raw struct {
+		Version int               `json:"version"`
+		Enabled *bool             `json:"enabled"`
+		Models  map[string]string `json:"models"`
+	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return Default()
 	}
@@ -49,7 +54,9 @@ func Load(home string) Config {
 	if raw.Version > 0 {
 		out.Version = raw.Version
 	}
-	out.Enabled = raw.Enabled
+	if raw.Enabled != nil {
+		out.Enabled = *raw.Enabled
+	}
 	if len(raw.Models) > 0 {
 		for k, v := range raw.Models {
 			if k != "" && v != "" {
