@@ -18,7 +18,18 @@ Mode 切换成功后还会写入会话 `lastUsedModel`，避免 resume 的 `mode
 真机验收（两层都要看）：
 
 1. `CURSOR_MODE_MODEL_DEBUG=1` 启动后，资产目录 `sync.log` 出现 `before_build` / `apply_result`。
-2. 会话落盘里助手消息的 `providerOptions.cursor.modelName` 与 Mode 映射一致（不能只看界面选择器）。
+2. 会话落盘里助手消息的 `providerOptions.cursor.modelName`（或 meta 里的 `lastUsedModel`）与 Mode 映射一致（不能只看界面选择器）。
+
+CLI `--mode` 只接受 `plan` / `ask`（Ask 在内部是 `search`）；**Agent 模式不要传 `--mode`**（没有 `default` 这个合法参数）。无头验收示例：
+
+```bash
+export PATH="$HOME/.local/share/cursor-mode-model/bin:$PATH"
+CURSOR_MODE_MODEL_DEBUG=1 agent --print --force '…'          # 期望 Grok + before_build
+CURSOR_MODE_MODEL_DEBUG=1 agent --mode plan --print --force '…'  # 期望 Opus
+CURSOR_MODE_MODEL_DEBUG=1 agent --mode ask --print --force '…'   # 期望 Grok
+```
+
+注意：同一会话 id 在不同工作目录 resume 时，落盘可能写到另一份 `~/.cursor/chats/<hash>/<id>/`；查模型要以**本次实际写入**的那份 store 为准。
 
 升级 Cursor Agent 后先跑 `cursor-mode-model status`。锚点未命中则自动切换失效，但 Agent 仍可正常用（故障开放）。`status.active` 要求包装器真正在 PATH 上生效，不是只看配置开关。
 
