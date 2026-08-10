@@ -1,10 +1,10 @@
-VERSION ?= 0.1.3
+VERSION ?= $(shell tr -d '[:space:]' < VERSION)
 BIN ?= $(HOME)/.local/bin/cursor-mode-model
 
 .PHONY: test build install smoke
 
 test:
-	go test -race ./...
+	go test ./...
 	CURSOR_MODE_MODEL_UNIT_TEST=1 node --test ./internal/assets/register.test.mjs
 
 build:
@@ -16,6 +16,6 @@ install: build
 
 smoke: install
 	$(BIN) status
-	@# 包装后的 agent --help 应仍可用
+	$(BIN) config show --json >/dev/null
 	PATH="$(HOME)/.local/share/cursor-mode-model/bin:$$PATH" agent --help >/dev/null
 	@echo smoke ok

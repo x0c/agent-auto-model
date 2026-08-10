@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/agentbin"
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/assets"
+	"github.com/x0c/cursor-mode-model/internal/agentbin"
+	"github.com/x0c/cursor-mode-model/internal/assets"
 )
 
 // Result 锚点扫描结果。

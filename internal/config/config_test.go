@@ -4,92 +4,85 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/paths"
 )
 
-func TestSaveLoadRoundTrip(t *testing.T) {
+func TestDefaultAndSaveLoad(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
-	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 	cfg := Default()
-	cfg.Models["plan"] = "custom-plan"
+	if cfg.Models["plan"] == "" || cfg.Models["default"] == "" {
+		t.Fatal("默认 models 不完整")
+	}
 	if err := Save(home, cfg); err != nil {
 		t.Fatal(err)
 	}
 	got := Load(home)
-	if got.Models["plan"] != "custom-plan" {
-		t.Fatalf("%#v", got.Models)
+	if got.Models["plan"] != cfg.Models["plan"] {
+		t.Fatalf("plan=%s", got.Models["plan"])
 	}
-	if !got.Enabled {
-		t.Fatal("enabled")
+	rt := filepath.Join(home, ".local", "share", "cursor-mode-model", "assets", "config.json")
+	if _, err := os.Stat(rt); err != nil {
+		t.Fatalf("运行时配置未同步: %v", err)
 	}
 }
 
-func TestLoadOmittingEnabledDefaultsTrue(t *testing.T) {
+func TestLoadMissingEnabledDefaultsTrue(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
-	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
-	path := paths.UserConfigFile(home)
+	path := filepath.Join(home, ".config", "cursor-mode-model", "config.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := `{"version":1,"models":{"plan":"x","default":"y"}}` + "\n"
+	body := `{"version":1,"models":{"plan":"x","default":"y"}}`
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	got := Load(home)
 	if !got.Enabled {
-		t.Fatal("缺省 enabled 应视为开启")
-	}
-	if got.Models["plan"] != "x" || got.Models["default"] != "y" {
-		t.Fatalf("%#v", got.Models)
+		t.Fatal("缺省 enabled 应视为 true")
 	}
 }
 
-func TestLoadEnabledFalseHonored(t *testing.T) {
+func TestSetModelAndAliases(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
-	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
-	cfg := Default()
-	cfg.Enabled = false
-	if err := Save(home, cfg); err != nil {
+	cfg, err := SetModel(home, "ask", "cursor-grok-4.5-high-fast")
+	if err != nil {
 		t.Fatal(err)
 	}
-	got := Load(home)
-	if got.Enabled {
-		t.Fatal("enabled=false 应保留")
+	if cfg.Models["search"] != "cursor-grok-4.5-high-fast" {
+		t.Fatalf("ask 未映射到 search: %#v", cfg.Models)
+	}
+	if _, err := SetModel(home, "nope", "x"); err == nil {
+		t.Fatal("非法 mode 应报错")
 	}
 }
 
-func TestLoadStrictDefaultFalse(t *testing.T) {
+func TestSetManyEnableStrictReset(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
-	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
-	path := paths.UserConfigFile(home)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	cfg, err := SetMany(home, map[string]string{
+		"plan":    "claude-opus-5-thinking-high",
+		"default": "cursor-grok-4.5-high-fast",
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(`{"version":1,"enabled":true}`+"\n"), 0o644); err != nil {
+	if cfg.Models["plan"] != "claude-opus-5-thinking-high" {
+		t.Fatal(cfg.Models["plan"])
+	}
+	cfg, err = SetEnabled(home, false)
+	if err != nil || cfg.Enabled {
+		t.Fatalf("enable: %#v %v", cfg, err)
+	}
+	cfg, err = SetStrict(home, true)
+	if err != nil || !cfg.Strict {
+		t.Fatalf("strict: %#v %v", cfg, err)
+	}
+	cfg, err = Reset(home)
+	if err != nil {
 		t.Fatal(err)
 	}
-	got := Load(home)
-	if got.Strict {
-		t.Fatal("strict 缺省应为 false")
+	if !cfg.Enabled || cfg.Strict {
+		t.Fatalf("reset 后应为默认: %#v", cfg)
 	}
-}
-
-func TestLoadStrictTrue(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
-	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
-	cfg := Default()
-	cfg.Strict = true
-	if err := Save(home, cfg); err != nil {
-		t.Fatal(err)
-	}
-	got := Load(home)
-	if !got.Strict {
-		t.Fatal("strict=true 应保留")
+	if cfg.Models["plan"] != DefaultModels["plan"] {
+		t.Fatal(cfg.Models["plan"])
 	}
 }

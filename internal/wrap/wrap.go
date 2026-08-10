@@ -2,38 +2,14 @@
 package wrap
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/agentbin"
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/assets"
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/config"
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/paths"
+	"github.com/x0c/cursor-mode-model/internal/assets"
+	"github.com/x0c/cursor-mode-model/internal/config"
+	"github.com/x0c/cursor-mode-model/internal/paths"
 )
-
-// Exec 解析官方 agent，注入环境后替换当前进程。
-func Exec(home string, argv0 string, args []string) error {
-	real, err := agentbin.Find(home)
-	if err != nil {
-		return fmt.Errorf("未找到 Cursor Agent 安装：%w", err)
-	}
-	extra, err := PrepareEnv(home, args)
-	if err != nil {
-		return err
-	}
-	env := os.Environ()
-	for k, v := range extra {
-		env = upsertEnv(env, k, v)
-	}
-	if argv0 == "" {
-		argv0 = "agent"
-	}
-	argv := append([]string{argv0}, args...)
-	return syscall.Exec(real, argv, env)
-}
 
 // PrepareEnv 返回应合并进环境的键值；关闭时返回空 map。
 func PrepareEnv(home string, args []string) (map[string]string, error) {

@@ -1,3 +1,3 @@
-module forgejo.caozc.top/Max/cursor-mode-model
+module github.com/x0c/cursor-mode-model
 
-go 1.25.6
+go 1.22

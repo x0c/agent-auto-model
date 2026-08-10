@@ -4,10 +4,12 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/paths"
+	"github.com/x0c/cursor-mode-model/internal/paths"
 )
 
 // DefaultModels 默认映射：Plan→Opus 5，其它→Grok 4.5。
@@ -17,6 +19,9 @@ var DefaultModels = map[string]string{
 	"search":  "cursor-grok-4.5-high-fast",
 	"debug":   "cursor-grok-4.5-high-fast",
 }
+
+// ValidModes 可配置的 Mode 键（CLI --mode ask 对应内部 search）。
+var ValidModes = []string{"plan", "default", "search", "debug"}
 
 // Config 用户可改配置。
 type Config struct {
@@ -33,6 +38,28 @@ func Default() Config {
 		models[k] = v
 	}
 	return Config{Version: 1, Enabled: true, Strict: false, Models: models}
+}
+
+// IsValidMode 判断 mode 键是否合法。
+func IsValidMode(mode string) bool {
+	for _, m := range ValidModes {
+		if m == mode {
+			return true
+		}
+	}
+	return false
+}
+
+// NormalizeModeAlias 把 ask→search 等别名归一。
+func NormalizeModeAlias(mode string) string {
+	switch strings.TrimSpace(strings.ToLower(mode)) {
+	case "ask":
+		return "search"
+	case "agent":
+		return "default"
+	default:
+		return strings.TrimSpace(mode)
+	}
 }
 
 // Load 读取用户配置；不存在或损坏时返回默认。
@@ -103,6 +130,79 @@ func SyncRuntime(home string, cfg Config) error {
 	}
 	payload = append(payload, '\n')
 	return writeFile(paths.RuntimeConfigFile(home), payload)
+}
+
+// SetModel 设置单个 Mode 的模型 ID。
+func SetModel(home, mode, modelID string) (Config, error) {
+	mode = NormalizeModeAlias(mode)
+	if !IsValidMode(mode) {
+		return Config{}, fmt.Errorf("非法 mode %q（允许：%s；ask 会映射为 search）", mode, strings.Join(ValidModes, ", "))
+	}
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return Config{}, errors.New("model-id 不能为空")
+	}
+	cfg := Load(home)
+	if cfg.Models == nil {
+		cfg.Models = Default().Models
+	}
+	cfg.Models[mode] = modelID
+	if err := Save(home, cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// SetMany 批量设置 mode=model 对。
+func SetMany(home string, pairs map[string]string) (Config, error) {
+	cfg := Load(home)
+	if cfg.Models == nil {
+		cfg.Models = Default().Models
+	}
+	for mode, modelID := range pairs {
+		mode = NormalizeModeAlias(mode)
+		if !IsValidMode(mode) {
+			return Config{}, fmt.Errorf("非法 mode %q（允许：%s）", mode, strings.Join(ValidModes, ", "))
+		}
+		modelID = strings.TrimSpace(modelID)
+		if modelID == "" {
+			return Config{}, fmt.Errorf("mode %s 的 model-id 不能为空", mode)
+		}
+		cfg.Models[mode] = modelID
+	}
+	if err := Save(home, cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// SetEnabled 开关自动切换。
+func SetEnabled(home string, enabled bool) (Config, error) {
+	cfg := Load(home)
+	cfg.Enabled = enabled
+	if err := Save(home, cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// SetStrict 设置严格模式。
+func SetStrict(home string, strict bool) (Config, error) {
+	cfg := Load(home)
+	cfg.Strict = strict
+	if err := Save(home, cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// Reset 恢复默认配置（覆盖用户文件）。
+func Reset(home string) (Config, error) {
+	cfg := Default()
+	if err := Save(home, cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
 }
 
 // GloballyDisabled 环境变量总开关为 0 时关闭。

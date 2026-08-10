@@ -1,0 +1,114 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+          - os: windows-latest
+            goos: windows
+            goarch: arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+      - name: Build archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          EXT=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; fi
+          OUT="cursor-mode-model${EXT}"
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build \
+            -ldflags "-s -w -X main.version=${VERSION}" \
+            -o "$OUT" ./cmd/cursor-mode-model
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            ARCHIVE="cursor-mode-model_${VERSION}_windows_${{ matrix.goarch }}.zip"
+            if command -v zip >/dev/null; then
+              zip -q "$ARCHIVE" "$OUT"
+            else
+              powershell -NoProfile -Command "Compress-Archive -Path '$OUT' -DestinationPath '$ARCHIVE'"
+            fi
+          else
+            ARCHIVE="cursor-mode-model_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
+            tar -czf "$ARCHIVE" "$OUT"
+          fi
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+      - name: Upload asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+          fi
+          gh release upload "$GITHUB_REF_NAME" "$ARCHIVE" --clobber
+
+  tap:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bump Homebrew formula (no downgrade)
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMEBREW_TAP_TOKEN:-}" ]; then
+            echo "HOMEBREW_TAP_TOKEN 未配置，跳过配方更新（本机 publish-release.sh 仍可更新）"
+            exit 0
+          fi
+          VERSION="${TAG#v}"
+          ARCHIVE_URL="https://github.com/x0c/cursor-mode-model/archive/refs/tags/${TAG}.tar.gz"
+          SHA="$(curl -fsSL "$ARCHIVE_URL" | sha256sum | awk '{print $1}')"
+          WORK="$(mktemp -d)"
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/x0c/homebrew-tap.git" "$WORK/tap"
+          FORMULA="$WORK/tap/Formula/cursor-mode-model.rb"
+          export VERSION ARCHIVE_URL SHA
+          set +e
+          python3 scripts/bump-homebrew-formula.py "$FORMULA"
+          rc=$?
+          set -e
+          if [ "$rc" -eq 3 ]; then exit 0; fi
+          if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+          cd "$WORK/tap"
+          if git diff --quiet -- Formula/cursor-mode-model.rb; then
+            echo "formula already up to date"
+            exit 0
+          fi
+          git config user.name "x0c"
+          git config user.email "x0c@users.noreply.github.com"
+          git add Formula/cursor-mode-model.rb
+          git commit -m "cursor-mode-model ${VERSION}"
+          git push origin main

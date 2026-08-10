@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/agentbin"
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/anchors"
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/config"
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/paths"
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/wrap"
+	"github.com/x0c/cursor-mode-model/internal/agentbin"
+	"github.com/x0c/cursor-mode-model/internal/anchors"
+	"github.com/x0c/cursor-mode-model/internal/config"
+	"github.com/x0c/cursor-mode-model/internal/paths"
+	"github.com/x0c/cursor-mode-model/internal/wrap"
 )
 
 // Decision 审计日志中的一条决策摘要。

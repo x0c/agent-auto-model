@@ -2,40 +2,53 @@
 package agentbin
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/paths"
+	"github.com/x0c/cursor-mode-model/internal/paths"
 )
+
+// ErrNotFound 未安装 Cursor Agent。
+var ErrNotFound = errors.New("cursor agent not found")
 
 // Find 返回官方 cursor-agent 启动脚本的绝对路径。
 func Find(home string) (string, error) {
-	versions := paths.CursorAgentVersionsDir(home)
-	entries, err := os.ReadDir(versions)
-	if err != nil {
-		return "", err
-	}
 	type cand struct {
 		path    string
 		modTime int64
 		name    string
 	}
 	var list []cand
-	for _, e := range entries {
-		if !e.IsDir() {
+	names := []string{"cursor-agent"}
+	if runtime.GOOS == "windows" {
+		names = []string{"cursor-agent.cmd", "cursor-agent.exe", "cursor-agent.bat", "cursor-agent"}
+	}
+	for _, versions := range paths.CursorAgentVersionsDirs(home) {
+		entries, err := os.ReadDir(versions)
+		if err != nil {
 			continue
 		}
-		p := filepath.Join(versions, e.Name(), "cursor-agent")
-		st, err := os.Stat(p)
-		if err != nil || st.IsDir() {
-			continue
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			for _, name := range names {
+				p := filepath.Join(versions, e.Name(), name)
+				st, err := os.Stat(p)
+				if err != nil || st.IsDir() {
+					continue
+				}
+				list = append(list, cand{path: p, modTime: st.ModTime().UnixNano(), name: e.Name() + "/" + name})
+			}
 		}
-		list = append(list, cand{path: p, modTime: st.ModTime().UnixNano(), name: e.Name()})
 	}
 	if len(list) == 0 {
-		return "", os.ErrNotExist
+		return "", fmt.Errorf("%w\n%s", ErrNotFound, installHint())
 	}
 	sort.Slice(list, func(i, j int) bool {
 		if list[i].modTime != list[j].modTime {
@@ -44,6 +57,11 @@ func Find(home string) (string, error) {
 		return list[i].name > list[j].name
 	})
 	return list[0].path, nil
+}
+
+func installHint() string {
+	return "Cursor Agent CLI was not found. Install and log in first: https://cursor.com/install\n" +
+		"未找到 Cursor Agent CLI。请先安装并登录：https://cursor.com/install"
 }
 
 // IndexJS 返回同版本目录下的 index.js。

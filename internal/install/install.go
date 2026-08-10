@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/assets"
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/config"
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/paths"
+	"github.com/x0c/cursor-mode-model/internal/assets"
+	"github.com/x0c/cursor-mode-model/internal/config"
+	"github.com/x0c/cursor-mode-model/internal/paths"
 )
 
 // State 记录本工具自身二进制位置，供包装脚本调用。
@@ -62,7 +64,7 @@ func Install(home, selfBinary string, dryRun bool) (Result, error) {
 	if err := writeWrappers(home, absSelf); err != nil {
 		return res, err
 	}
-	if err := ensurePathSnippet(home); err != nil {
+	if err := ensurePath(home); err != nil {
 		return res, err
 	}
 	res.Status = "ok"
@@ -86,9 +88,11 @@ func Uninstall(home string, dryRun bool) (Result, error) {
 	if err := config.Save(home, cfg); err != nil {
 		return res, err
 	}
-	_ = os.Remove(filepath.Join(paths.WrapperBinDir(home), "agent"))
-	_ = os.Remove(filepath.Join(paths.WrapperBinDir(home), "cursor-agent"))
-	_ = removePathSnippets(home)
+	dir := paths.WrapperBinDir(home)
+	for _, name := range wrapperNames() {
+		_ = os.Remove(filepath.Join(dir, name))
+	}
+	_ = removePath(home)
 	st := State{Enabled: false}
 	if prev, err := readState(home); err == nil {
 		st.SelfBinary = prev.SelfBinary
@@ -98,10 +102,27 @@ func Uninstall(home string, dryRun bool) (Result, error) {
 	return res, nil
 }
 
+func wrapperNames() []string {
+	if runtime.GOOS == "windows" {
+		return []string{"agent.cmd", "cursor-agent.cmd"}
+	}
+	return []string{"agent", "cursor-agent"}
+}
+
 func writeWrappers(home, selfBinary string) error {
 	dir := paths.WrapperBinDir(home)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
+	}
+	if runtime.GOOS == "windows" {
+		for _, name := range []string{"agent", "cursor-agent"} {
+			body := fmt.Sprintf("@echo off\r\nREM 由 cursor-mode-model install 生成\r\n%q exec --invoked-as %s -- %%*\r\n", selfBinary, name)
+			path := filepath.Join(dir, name+".cmd")
+			if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	for _, name := range []string{"agent", "cursor-agent"} {
 		body := fmt.Sprintf(`#!/bin/sh
@@ -117,12 +138,29 @@ exec %q exec --invoked-as %q -- "$@"
 }
 
 func pathExportLine(home string) string {
+	if runtime.GOOS == "windows" {
+		return paths.WrapperBinDir(home)
+	}
 	return fmt.Sprintf(`export PATH=%q:$PATH`, paths.WrapperBinDir(home))
+}
+
+func ensurePath(home string) error {
+	if runtime.GOOS == "windows" {
+		return ensureWindowsUserPath(paths.WrapperBinDir(home))
+	}
+	return ensureUnixPathSnippet(home)
+}
+
+func removePath(home string) error {
+	if runtime.GOOS == "windows" {
+		return removeWindowsUserPath(paths.WrapperBinDir(home))
+	}
+	return removeUnixPathSnippets(home)
 }
 
 const pathMarker = "# cursor-mode-model PATH"
 
-func ensurePathSnippet(home string) error {
+func ensureUnixPathSnippet(home string) error {
 	snippetDir := filepath.Join(paths.DataDir(home), "shell")
 	if err := os.MkdirAll(snippetDir, 0o755); err != nil {
 		return err
@@ -132,7 +170,6 @@ func ensurePathSnippet(home string) error {
 	if err := os.WriteFile(snippet, []byte(body), 0o644); err != nil {
 		return err
 	}
-	// 追加到常见 shell rc（幂等）
 	line := fmt.Sprintf(`[ -f %q ] && . %q`, snippet, snippet)
 	for _, rcName := range []string{".zshrc", ".bashrc", ".zprofile"} {
 		rc := filepath.Join(home, rcName)
@@ -155,7 +192,7 @@ func ensurePathSnippet(home string) error {
 	return nil
 }
 
-func removePathSnippets(home string) error {
+func removeUnixPathSnippets(home string) error {
 	snippet := filepath.Join(paths.DataDir(home), "shell", "path.sh")
 	_ = os.Remove(snippet)
 	for _, rcName := range []string{".zshrc", ".bashrc", ".zprofile"} {
@@ -193,18 +230,63 @@ func stripPathBlock(text string) string {
 			if strings.Contains(line, "cursor-mode-model") && strings.Contains(line, "path.sh") {
 				continue
 			}
-			// 标记后不是预期行，仍丢掉标记本身，保留本行
 			out = append(out, line)
 			continue
 		}
 		out = append(out, line)
 	}
 	cleaned := strings.Join(out, "\n")
-	// 去掉末尾因删除多出来的多余空行（最多压一层）
 	for strings.HasSuffix(cleaned, "\n\n\n") {
 		cleaned = strings.TrimSuffix(cleaned, "\n")
 	}
 	return cleaned
+}
+
+func ensureWindowsUserPath(dir string) error {
+	return runPowerShellPathMutate(dir, false)
+}
+
+func removeWindowsUserPath(dir string) error {
+	return runPowerShellPathMutate(dir, true)
+}
+
+func runPowerShellPathMutate(dir string, remove bool) error {
+	// 用 PowerShell 改用户 PATH，避免 setx 截断。
+	script := `
+$ErrorActionPreference = 'Stop'
+$dir = $env:CMM_PATH_DIR
+$remove = $env:CMM_PATH_REMOVE -eq '1'
+$trim = [char[]]'\/'
+$normalized = $dir.TrimEnd($trim)
+$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+$entries = @()
+if ($userPath) { $entries = @($userPath -split ';' | Where-Object { $_ }) }
+$filtered = @($entries | Where-Object {
+  -not $_.Trim().TrimEnd($trim).Equals($normalized, [StringComparison]::OrdinalIgnoreCase)
+})
+if (-not $remove) {
+  $filtered = @($normalized) + $filtered
+}
+$newPath = ($filtered -join ';')
+[Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+`
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+	cmd.Env = append(os.Environ(),
+		"CMM_PATH_DIR="+dir,
+		fmt.Sprintf("CMM_PATH_REMOVE=%d", boolTo01(remove)),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("更新用户 PATH 失败：%w\n%s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func boolTo01(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 func writeState(home string, st State) error {

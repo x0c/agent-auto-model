@@ -60,10 +60,17 @@ CLI `--mode` 只接受 `plan` / `ask`（Ask 内部是 `search`）；Agent 模式
 
 ## 包装与 PATH
 
-`install` 在 `~/.local/share/cursor-mode-model/bin/` 写入包装脚本并尽量 prepend 进 shell rc；`uninstall` 必须清掉这些挂钩。官方入口在 `~/.local/share/cursor-agent/versions/<ver>/cursor-agent`。
+`install` 在 `~/.local/share/cursor-mode-model/bin/` 写入包装脚本（Unix）或 `.cmd`（Windows），并尽量 prepend 进 shell rc / 用户 PATH；`uninstall` 必须对称清理。官方入口通常在 `~/.local/share/cursor-agent/versions/<ver>/cursor-agent`（Windows 也可能在 `%LOCALAPPDATA%\cursor-agent\versions\`）。
 
 shell **函数 / alias 优先于 PATH**——`status.wrapper_effective` 会反映。
 
-## 与 pickup 的边界
+## 发版与双远端
 
-本工具独立。禁止把本逻辑并回 pickup 仓库。
+- 公开协作 / Release / Homebrew 源：GitHub `x0c/cursor-mode-model`
+- 备份：Forgejo（见根/CLI `AGENTS.md` Remote 表）
+- 本机收尾：`bash scripts/publish-release.sh vX.Y.Z`（不等 CI 排队）
+- 配方仓库：复用 `x0c/homebrew-tap`，写入带版本回退防护
+
+## 独立性
+
+本仓库保持独立产品边界，不并入其它会话托管 / Agent 启动链工具。

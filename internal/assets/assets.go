@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/config"
-	"forgejo.caozc.top/Max/cursor-mode-model/internal/paths"
+	"github.com/x0c/cursor-mode-model/internal/config"
+	"github.com/x0c/cursor-mode-model/internal/paths"
 )
 
 //go:embed register.mjs

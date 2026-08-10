@@ -62,8 +62,24 @@ func StateFile(home string) string {
 	return filepath.Join(DataDir(home), "state.json")
 }
 
+// CursorAgentVersionsDirs 返回可能的 Cursor Agent versions 目录（按优先级）。
+func CursorAgentVersionsDirs(home string) []string {
+	out := []string{
+		filepath.Join(home, ".local", "share", "cursor-agent", "versions"),
+	}
+	if local := os.Getenv("LOCALAPPDATA"); local != "" {
+		out = append(out, filepath.Join(local, "cursor-agent", "versions"))
+	}
+	return out
+}
+
+// CursorAgentVersionsDir 兼容旧调用：返回第一个候选路径。
 func CursorAgentVersionsDir(home string) string {
-	return filepath.Join(home, ".local", "share", "cursor-agent", "versions")
+	dirs := CursorAgentVersionsDirs(home)
+	if len(dirs) == 0 {
+		return ""
+	}
+	return dirs[0]
 }
 
 func LocalBinDir(home string) string {

@@ -1,46 +1,128 @@
 # cursor-mode-model
 
-**Cursor Agent 命令行**的独立补丁：会话 Mode 一变就自动换模型，并在**真正发请求前**再强制一次（不只改界面选择器）。
+[![CI](https://github.com/x0c/cursor-mode-model/actions/workflows/test.yml/badge.svg)](https://github.com/x0c/cursor-mode-model/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-| Mode | 默认模型 |
-|---|---|
-| Plan | Claude Opus 5（高推理） |
-| Agent / Ask / Debug | Grok 4.5 |
+语言： [English](README.md) | 简体中文
 
-与 pickup **无关**，不依赖 pickup。
+按 Cursor Agent CLI 的 **Mode** 自动切换模型——Plan → Claude Opus，其它 → Grok——并且作用在真实请求路径上（不只是模型选择器 UI）。
+
+**支持平台：** macOS · Linux · Windows
+
+## 功能
+
+- 按 Mode 映射模型 ID（`plan` / `default` / `search` / `debug`）
+- 在真实发送路径强制映射模型（恢复会话也安全）
+- 配置命令：`show` / `set` / `set-many` / `enable` / `disable` / `set-strict` / `reset`（支持 `--json`）
+- 可选 `strict`：校正失败则中止发送
+- 显式 `--model` 会锁定本会话（不再自动切换）
+- `status` 可查看近期决策审计
+
+## 前置条件
+
+需要已安装并登录 **Cursor Agent CLI**：
+
+```bash
+curl https://cursor.com/install -fsS | bash
+```
+
+本工具本身不计费；模型费用走你的 Cursor 账号。
 
 ## 安装
 
+### macOS / Linux（Homebrew）
+
 ```bash
-go install ./cmd/cursor-mode-model
+brew install x0c/tap/cursor-mode-model
 cursor-mode-model install
 ```
 
-新开终端（或重新加载 shell 配置）后：
+### macOS / Linux（一键脚本）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/x0c/cursor-mode-model/main/install.sh | bash
+```
+
+### Windows（PowerShell）
+
+```powershell
+irm https://raw.githubusercontent.com/x0c/cursor-mode-model/main/install.ps1 | iex
+```
+
+### 备选（`go install`）
+
+```bash
+go install github.com/x0c/cursor-mode-model/cmd/cursor-mode-model@latest
+cursor-mode-model install
+```
+
+安装后请**新开终端**，让 PATH 包装生效。
+
+## 快速开始
 
 ```bash
 cursor-mode-model status
-agent
+cursor-mode-model config set plan claude-opus-5-thinking-high
+cursor-mode-model config set default cursor-grok-4.5-high-fast
+agent --mode plan
 ```
 
-升级后，**升级前就一直开着的会话需要重启**才会吃到新挂钩。
+用 `status` 确认已生效（`active=true`），并开一个**新的** Agent 会话。安装/改配置之前就挂着的旧会话需要重启。
 
-## 配置
+## 配置命令
 
-`~/.config/cursor-mode-model/config.json`
+```text
+cursor-mode-model config show [--json]
+cursor-mode-model config set <mode> <model-id> [--json]
+cursor-mode-model config set-many plan=... default=... [--json]
+cursor-mode-model config enable|disable [--json]
+cursor-mode-model config set-strict true|false [--json]
+cursor-mode-model config reset [--json]
+```
 
-- `strict: true`：发送前纠正失败时直接中断本轮（默认只告警不打断）
-- 决策审计日志（不含对话正文）：`~/.local/share/cursor-mode-model/assets/decisions.log`
+合法 mode：`plan`、`default`、`search`、`debug`。  
+CLI 的 `--mode ask` 对应内部 `search`。
 
-## 保证范围
+默认映射：
 
-会管：主对话按 Mode 发请求、接着聊旧会话时也能认出 Mode、界面与「上次模型」记忆跟真实值对齐。
+| Mode | 模型 |
+|---|---|
+| Plan | `claude-opus-5-thinking-high` |
+| Agent / Ask / Debug | `cursor-grok-4.5-high-fast` |
 
-不管：探索/子代理用哪颗模型（保持 Cursor 原样）；仍在跑旧挂钩的长期会话（需重启）。
+## 工作原理（简述）
 
-## 关闭
+1. 安装后在 PATH 最前放一层 `agent` / `cursor-agent` 包装。
+2. 包装注入 Node 预加载，改写 Agent 打包后的 JS。
+3. Mode 以会话权威元数据为准（含 resume）。
+4. 发送前强制映射模型（除非被 `--model` 锁定）。
 
-- 临时：`CURSOR_MODE_MODEL=0 agent …`
-- 卸包装：`cursor-mode-model uninstall`
+## 限制
 
-启动时若已写明要用哪个模型，本会话不再自动改。
+- 不绑定 explore / 子代理模型（刻意为之）。
+- 安装或改配置前已在跑的会话需要重启。
+- 若 Cursor Agent 升级导致锚点失效，工具会故障开放（Agent 仍可运行，自动切换暂停）。用 `status` 诊断。
+
+## 常见问题
+
+**会改 Cursor 桌面端吗？**  
+不会。只包装本机 PATH 上的 Agent CLI 入口。
+
+**会覆盖 `--model` 吗？**  
+不会。显式 `--model` 会锁定该会话。
+
+**为什么装完 `status` 仍显示未生效？**  
+多半是包装还没排到 PATH 最前——请新开终端，或确认包装目录已置顶。
+
+**要花钱吗？**  
+只有正常的 Cursor 模型用量。本项目 MIT，免费。
+
+## 卸载
+
+```bash
+cursor-mode-model uninstall
+```
+
+## 许可证
+
+[MIT](LICENSE)
