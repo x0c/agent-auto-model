@@ -71,6 +71,12 @@ shell **函数 / alias 优先于 PATH**——`status.wrapper_effective` 会反�
 - 本机收尾：`bash scripts/publish-release.sh vX.Y.Z`（不等 CI 排队）
 - 配方仓库：复用 `x0c/homebrew-tap`，写入带版本回退防护
 
+发版踩坑（必守）：
+
+1. **新建配方必须先 `git add` 再看 staged diff**。对未跟踪文件跑 `git diff --quiet` 会误判「无需改动」，配方看起来更新成功、远端却没有文件。
+2. **本机上传附件与 CI `release.yml` 可能抢同名资源导致 404**。附件失败不要中断配方更新；用户能否 `brew upgrade` 取决于配方指向的源码归档，不取决于预编译包是否齐。
+3. **v* tag 推到 github 后立刻跑本机 `publish-release.sh`**；CI 只补其它平台包与配方兜底，不能当唯一升级通路。
+
 ## 独立性
 
 本仓库保持独立产品边界，不并入其它会话托管 / Agent 启动链工具。
