@@ -103,12 +103,12 @@ jobs:
           if [ "$rc" -eq 3 ]; then exit 0; fi
           if [ "$rc" -ne 0 ]; then exit "$rc"; fi
           cd "$WORK/tap"
-          if git diff --quiet -- Formula/cursor-mode-model.rb; then
+          git add Formula/cursor-mode-model.rb
+          if git diff --cached --quiet -- Formula/cursor-mode-model.rb; then
             echo "formula already up to date"
             exit 0
           fi
           git config user.name "x0c"
           git config user.email "x0c@users.noreply.github.com"
-          git add Formula/cursor-mode-model.rb
           git commit -m "cursor-mode-model ${VERSION}"
           git push origin main

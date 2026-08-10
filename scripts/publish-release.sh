@@ -126,10 +126,10 @@ else
   elif [ "$rc" -ne 0 ]; then
     rm -rf "$WORK"; die "改写配方失败"
   else
-    if git -C "$WORK/tap" diff --quiet -- "Formula/${FORMULA_NAME}"; then
+    git -C "$WORK/tap" add "Formula/${FORMULA_NAME}"
+    if git -C "$WORK/tap" diff --cached --quiet -- "Formula/${FORMULA_NAME}"; then
       echo "==> 配方已经指向 ${TAG}，无需改动"
     else
-      git -C "$WORK/tap" add "Formula/${FORMULA_NAME}"
       git -C "$WORK/tap" -c user.name="x0c" -c user.email="x0c@users.noreply.github.com" \
         commit -q -m "cursor-mode-model ${VERSION}"
       git -C "$WORK/tap" push -q origin main
