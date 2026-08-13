@@ -62,6 +62,14 @@ func StateFile(home string) string {
 	return filepath.Join(DataDir(home), "state.json")
 }
 
+func AutoUpdateStateFile(home string) string {
+	return filepath.Join(DataDir(home), "autoupdate.json")
+}
+
+func AutoUpdateLockFile(home string) string {
+	return filepath.Join(DataDir(home), "autoupdate.lock")
+}
+
 // CursorAgentVersionsDirs 返回可能的 Cursor Agent versions 目录（按优先级）。
 func CursorAgentVersionsDirs(home string) []string {
 	out := []string{

@@ -10,6 +10,7 @@ import (
 
 	"github.com/x0c/cursor-mode-model/internal/agentbin"
 	"github.com/x0c/cursor-mode-model/internal/anchors"
+	"github.com/x0c/cursor-mode-model/internal/autoupdate"
 	"github.com/x0c/cursor-mode-model/internal/config"
 	"github.com/x0c/cursor-mode-model/internal/paths"
 	"github.com/x0c/cursor-mode-model/internal/wrap"
@@ -27,21 +28,22 @@ type Decision struct {
 
 // Payload status 命令输出。
 type Payload struct {
-	EnabledConfig    bool              `json:"enabled_config"`
-	EnabledEnv       bool              `json:"enabled_env"`
-	Strict           bool              `json:"strict"`
-	WrapperEffective bool              `json:"wrapper_effective"`
-	Active           bool              `json:"active"`
-	UserConfig       string            `json:"user_config"`
-	Register         string            `json:"register"`
-	RegisterOK       bool              `json:"register_present"`
-	WrapperBin       string            `json:"wrapper_bin"`
-	PathAgent        string            `json:"path_agent"`
-	RealAgent        string            `json:"real_agent"`
-	Models           map[string]string `json:"models"`
-	Anchors          anchors.Result    `json:"anchors"`
-	RecentDecisions  []Decision        `json:"recent_decisions,omitempty"`
-	Hint             string            `json:"hint,omitempty"`
+	EnabledConfig    bool                     `json:"enabled_config"`
+	EnabledEnv       bool                     `json:"enabled_env"`
+	Strict           bool                     `json:"strict"`
+	WrapperEffective bool                     `json:"wrapper_effective"`
+	Active           bool                     `json:"active"`
+	UserConfig       string                   `json:"user_config"`
+	Register         string                   `json:"register"`
+	RegisterOK       bool                     `json:"register_present"`
+	WrapperBin       string                   `json:"wrapper_bin"`
+	PathAgent        string                   `json:"path_agent"`
+	RealAgent        string                   `json:"real_agent"`
+	Models           map[string]string        `json:"models"`
+	Anchors          anchors.Result           `json:"anchors"`
+	AutoUpdate       autoupdate.RuntimeStatus `json:"auto_update"`
+	RecentDecisions  []Decision               `json:"recent_decisions,omitempty"`
+	Hint             string                   `json:"hint,omitempty"`
 }
 
 // Collect 收集状态。
@@ -66,6 +68,7 @@ func Collect(home string) Payload {
 		RealAgent:        real,
 		Models:           cfg.Models,
 		Anchors:          anchors.Check(home),
+		AutoUpdate:       autoupdate.LoadRuntimeStatus(home),
 		RecentDecisions:  recentDecisions(home, 8),
 	}
 	switch {

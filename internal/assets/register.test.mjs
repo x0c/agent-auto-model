@@ -10,6 +10,9 @@ const {
   currentMode,
   modeKnown,
   resolveModel,
+  expandModelSpec,
+  pickLatestMatching,
+  isGlobSpec,
   normalizeModelId,
   modelsEquivalent,
   patchSource,
@@ -59,10 +62,41 @@ test('currentMode：都没有时返回 null（禁止瞎猜 default）', () => {
   assert.equal(modeKnown(), false);
 });
 
-test('resolveModel 按配置映射', () => {
+test('resolveModel 按配置映射（无 mgr 时通配符无法展开）', () => {
+  globalThis.__cursorModeModelManager = undefined;
   assert.equal(resolveModel('plan'), 'claude-opus-5-thinking-high');
-  assert.equal(resolveModel('default'), 'cursor-grok-4.5-high-fast');
-  assert.equal(resolveModel('search'), 'cursor-grok-4.5-high-fast');
+  assert.equal(resolveModel('default'), null);
+  assert.equal(resolveModel('search'), null);
+});
+
+test('通配符自动选最新模型，且同版本优先非 fast', () => {
+  assert.equal(isGlobSpec('cursor-grok-*-high'), true);
+  assert.equal(isGlobSpec('cursor-grok-4.5-high'), false);
+  const candidates = [
+    'cursor-grok-4.5-high',
+    'cursor-grok-4.5-high-fast',
+    'cursor-grok-4.6-high',
+    'cursor-grok-4.6-high-fast',
+    'claude-opus-5',
+  ];
+  assert.equal(pickLatestMatching('cursor-grok-*-high', candidates), 'cursor-grok-4.6-high');
+  assert.equal(
+    pickLatestMatching('cursor-grok-4.5-*', candidates),
+    'cursor-grok-4.5-high',
+  );
+  const mgr = {
+    parameterizedModelMap: new Map([
+      ['cursor-grok-4.5-high', { modelId: 'cursor-grok-4.5-high', name: 'cursor-grok-4.5-high' }],
+      ['cursor-grok-4.6-high', { modelId: 'cursor-grok-4.6-high', name: 'cursor-grok-4.6-high' }],
+      [
+        'cursor-grok-4.6-high-fast',
+        { modelId: 'cursor-grok-4.6-high-fast', name: 'cursor-grok-4.6-high-fast' },
+      ],
+    ]),
+  };
+  assert.equal(expandModelSpec('cursor-grok-*-high', mgr), 'cursor-grok-4.6-high');
+  assert.equal(expandModelSpec('cursor-grok-4.6-high', mgr), 'cursor-grok-4.6-high');
+  assert.equal(expandModelSpec('cursor-grok-9.*-high', mgr), null);
 });
 
 test('normalizeModelId：thinking-high 别名与 mapModelToParameterizedSelection', () => {

@@ -49,7 +49,7 @@ func TestConfigCLI(t *testing.T) {
 	}
 
 	code = captureExit(t, func() int {
-		return run([]string{"cursor-mode-model", "config", "set-many", "default=cursor-grok-4.5-high-fast", "search=cursor-grok-4.5-high-fast", "--json"})
+		return run([]string{"cursor-mode-model", "config", "set-many", "default=cursor-grok-*-high", "search=cursor-grok-*-high", "--json"})
 	})
 	if code != 0 {
 		t.Fatalf("set-many exit=%d", code)

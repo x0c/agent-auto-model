@@ -13,7 +13,8 @@ Auto-switch **Cursor Agent CLI** models by Mode — Plan → Claude Opus, everyt
 
 - Map Modes to model IDs (`plan` / `default` / `search` / `debug`)
 - Enforce the mapped model on the real send path (resume-safe)
-- CLI config: `show` / `set` / `set-many` / `enable` / `disable` / `set-strict` / `reset` (+ `--json`)
+- Silent self-update from GitHub Releases with status diagnostics
+- CLI config: `show` / `set` / `set-many` / `enable` / `disable` / `set-strict` / `set-auto-update` / `set-update-interval` / `reset` (+ `--json`)
 - Optional `strict` mode: abort send if correction fails
 - Explicit `--model` locks the session (no auto-switch)
 - Audit log of recent decisions via `status`
@@ -63,7 +64,7 @@ Open a **new terminal** after install so PATH wrappers take effect.
 ```bash
 cursor-mode-model status
 cursor-mode-model config set plan claude-opus-5-thinking-high
-cursor-mode-model config set default cursor-grok-4.5-high-fast
+cursor-mode-model config set default 'cursor-grok-*-high'
 agent --mode plan
 ```
 
@@ -77,18 +78,39 @@ cursor-mode-model config set <mode> <model-id> [--json]
 cursor-mode-model config set-many plan=... default=... [--json]
 cursor-mode-model config enable|disable [--json]
 cursor-mode-model config set-strict true|false [--json]
+cursor-mode-model config set-auto-update true|false [--json]
+cursor-mode-model config set-update-interval <hours> [--json]
 cursor-mode-model config reset [--json]
+cursor-mode-model update [--force] [--quiet] [--json]
 ```
 
 Valid modes: `plan`, `default`, `search`, `debug`.  
 CLI `--mode ask` maps to internal `search`.
+
+Model IDs may use shell-style wildcards (`*`, `?`). At request time the tool expands them against models currently available in Cursor Agent and picks the **latest** version (preferring non-`-fast` when versions tie).
 
 Default mapping:
 
 | Mode | Model |
 |---|---|
 | Plan | `claude-opus-5-thinking-high` |
-| Agent / Ask / Debug | `cursor-grok-4.5-high-fast` |
+| Agent / Ask / Debug | `cursor-grok-*-high` (auto latest) |
+
+## Silent Self-Update
+
+- By default, commands perform a throttled self-update check every 24 hours.
+- `agent` / `cursor-agent` wrapper launches the check in a detached background process so request startup is not blocked.
+- Updates are pulled from the latest GitHub Release asset for the current OS/arch and then re-run `install` to refresh wrappers and assets.
+- Failures are fail-open: the command continues, and diagnostics are stored in `status`.
+
+Useful commands:
+
+```bash
+cursor-mode-model status
+cursor-mode-model update --force
+cursor-mode-model config set-auto-update false
+cursor-mode-model config set-update-interval 12
+```
 
 ## How it works
 
@@ -102,6 +124,7 @@ Default mapping:
 - Explore / subagent models are **not** bound (by design).
 - Sessions already running before install or config changes must be restarted.
 - If Cursor Agent ships a bundle that no longer matches our anchors, the tool fails open (Agent still runs; auto-switch pauses). Check `status`.
+- Self-update only replaces `cursor-mode-model` itself; it does not upgrade Cursor Agent.
 
 ## FAQ
 

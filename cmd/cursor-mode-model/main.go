@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/x0c/cursor-mode-model/internal/autoupdate"
 	"github.com/x0c/cursor-mode-model/internal/config"
 	"github.com/x0c/cursor-mode-model/internal/install"
 	"github.com/x0c/cursor-mode-model/internal/paths"
@@ -16,7 +17,7 @@ import (
 )
 
 // 由 -ldflags 注入。
-var version = "0.2.0"
+var version = "0.3.0"
 
 func main() {
 	os.Exit(run(os.Args))
@@ -42,6 +43,7 @@ func run(args []string) int {
 	}
 	cmd := args[1]
 	rest := args[2:]
+	runPreflightUpdate(paths.Home(), cmd)
 	switch cmd {
 	case "version", "--version", "-V":
 		fmt.Println(version)
@@ -58,6 +60,8 @@ func run(args []string) int {
 		return cmdExec(rest)
 	case "config":
 		return cmdConfig(rest)
+	case "update":
+		return cmdUpdate(rest)
 	default:
 		fmt.Fprintf(os.Stderr, "未知命令：%s\n", cmd)
 		return usage()
@@ -71,11 +75,14 @@ func usage() int {
   cursor-mode-model status [--json]
   cursor-mode-model install [--dry-run] [--json]
   cursor-mode-model uninstall [--dry-run] [--json]
+  cursor-mode-model update [--force] [--quiet] [--json]
   cursor-mode-model config show [--json]
   cursor-mode-model config set <mode> <model-id> [--json]
   cursor-mode-model config set-many plan=... default=... [--json]
   cursor-mode-model config enable|disable [--json]
   cursor-mode-model config set-strict true|false [--json]
+  cursor-mode-model config set-auto-update true|false [--json]
+  cursor-mode-model config set-update-interval <hours> [--json]
   cursor-mode-model config reset [--json]
   cursor-mode-model exec [--invoked-as NAME] -- [agent 参数...]
   cursor-mode-model version
@@ -109,6 +116,15 @@ func cmdStatus(args []string) int {
 	fmt.Printf("  严格模式：%v\n", p.Strict)
 	fmt.Printf("  Plan → %s\n", p.Models["plan"])
 	fmt.Printf("  其它 → %s\n", p.Models["default"])
+	fmt.Printf("  自更新：enabled=%v channel=%s interval=%dh last=%s installed=%s\n",
+		p.AutoUpdate.Enabled,
+		emptyDash(p.AutoUpdate.Channel),
+		p.AutoUpdate.CheckIntervalHours,
+		emptyDash(p.AutoUpdate.LastCheckedAt),
+		emptyDash(p.AutoUpdate.LastInstalled))
+	if p.AutoUpdate.LastError != "" {
+		fmt.Printf("  自更新错误：%s\n", p.AutoUpdate.LastError)
+	}
 	parts := make([]string, 0, len(p.Anchors.Anchors))
 	for k, v := range p.Anchors.Anchors {
 		mark := "MISS"
@@ -187,6 +203,9 @@ func cmdExec(args []string) int {
 			break
 		}
 		break
+	}
+	if self, err := os.Executable(); err == nil {
+		autoupdate.KickoffBackgroundCheck(paths.Home(), self)
 	}
 	if err := wrap.Exec(paths.Home(), invoked, rest); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -288,6 +307,40 @@ func cmdConfig(args []string) int {
 			return 1
 		}
 		return configMutated(wantJSON, cfg, restartHint)
+	case "set-auto-update":
+		rest = stripFlag(rest, "--json")
+		if len(rest) < 1 {
+			fmt.Fprintln(os.Stderr, "用法：config set-auto-update true|false")
+			return 2
+		}
+		enabled, err := strconv.ParseBool(rest[0])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "set-auto-update 需要 true 或 false")
+			return 2
+		}
+		cfg, err := config.SetAutoUpdateEnabled(home, enabled)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			return 1
+		}
+		return configMutated(wantJSON, cfg, "已写入配置。静默自更新开关将在下一次命令执行时生效。")
+	case "set-update-interval":
+		rest = stripFlag(rest, "--json")
+		if len(rest) < 1 {
+			fmt.Fprintln(os.Stderr, "用法：config set-update-interval <hours>")
+			return 2
+		}
+		hours, err := strconv.Atoi(rest[0])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "set-update-interval 需要正整数小时数")
+			return 2
+		}
+		cfg, err := config.SetAutoUpdateInterval(home, hours)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			return 1
+		}
+		return configMutated(wantJSON, cfg, "已写入配置。新的静默自更新检查间隔将在下一次命令执行时生效。")
 	case "reset":
 		cfg, err := config.Reset(home)
 		if err != nil {
@@ -315,6 +368,56 @@ func printConfig(cfg config.Config) {
 	for _, mode := range config.ValidModes {
 		fmt.Printf("  %s → %s\n", mode, cfg.Models[mode])
 	}
+	fmt.Printf("  auto_update.enabled → %v\n", cfg.AutoUpdate.Enabled)
+	fmt.Printf("  auto_update.interval_hours → %d\n", cfg.AutoUpdate.CheckIntervalHours)
+	fmt.Printf("  auto_update.channel → %s\n", cfg.AutoUpdate.Channel)
+}
+
+func cmdUpdate(args []string) int {
+	wantJSON := hasFlag(args, "--json") || !stdoutIsTTY()
+	force := hasFlag(args, "--force")
+	quiet := hasFlag(args, "--quiet")
+	self, err := os.Executable()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		return 1
+	}
+	err = autoupdate.MaybeCheckAndUpdate(paths.Home(), version, self, force)
+	p := status.Collect(paths.Home())
+	if wantJSON {
+		meta := map[string]any{"version": version}
+		if err != nil {
+			meta["error"] = err.Error()
+		}
+		return writeJSON(map[string]any{"ok": err == nil, "data": p, "meta": meta})
+	}
+	if quiet {
+		if err != nil {
+			return 1
+		}
+		return 0
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "静默自更新失败：%v\n", err)
+		return 1
+	}
+	fmt.Printf("静默自更新检查完成。当前已安装：%s\n", emptyDash(p.AutoUpdate.LastInstalled))
+	return 0
+}
+
+func runPreflightUpdate(home, cmd string) {
+	if os.Getenv("CURSOR_MODE_MODEL_SKIP_UPDATE_CHECK") == "1" {
+		return
+	}
+	switch cmd {
+	case "install", "uninstall", "version", "--version", "-V", "help", "--help", "-h", "update":
+		return
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return
+	}
+	_ = autoupdate.MaybeCheckAndUpdate(home, version, self, false)
 }
 
 func hasFlag(args []string, name string) bool {

@@ -315,3 +315,8 @@ func readState(home string) (State, error) {
 	err = json.Unmarshal(data, &st)
 	return st, err
 }
+
+// LoadState 读取安装状态，供诊断和自更新使用。
+func LoadState(home string) (State, error) {
+	return readState(home)
+}

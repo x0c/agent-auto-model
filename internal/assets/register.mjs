@@ -49,9 +49,9 @@ function loadConfig() {
     strict: false,
     models: {
       plan: 'claude-opus-5-thinking-high',
-      default: 'cursor-grok-4.5-high-fast',
-      search: 'cursor-grok-4.5-high-fast',
-      debug: 'cursor-grok-4.5-high-fast',
+      default: 'cursor-grok-*-high',
+      search: 'cursor-grok-*-high',
+      debug: 'cursor-grok-*-high',
     },
   };
 }
@@ -77,9 +77,125 @@ const models = (config && config.models) || {};
 const strict = Boolean(config && config.strict);
 const anchors = loadAnchors();
 
+function isGlobSpec(spec) {
+  return typeof spec === 'string' && (spec.includes('*') || spec.includes('?'));
+}
+
+function globToRegExp(spec) {
+  let out = '^';
+  for (const ch of String(spec)) {
+    if (ch === '*') out += '.*';
+    else if (ch === '?') out += '.';
+    else if (/[.+^${}()|[\]\\]/.test(ch)) out += '\\' + ch;
+    else out += ch;
+  }
+  out += '$';
+  return new RegExp(out);
+}
+
+/** 从模型管理器收集可匹配的模型 id。 */
+function listAvailableModelIds(mgr) {
+  const ids = new Set();
+  const add = (v) => {
+    if (v == null || v === '') return;
+    ids.add(String(v));
+  };
+  if (!mgr) return [];
+  try {
+    const map = mgr.parameterizedModelMap;
+    if (map && typeof map.values === 'function') {
+      for (const entry of map.values()) {
+        if (!entry) continue;
+        add(entry.name);
+        add(entry.modelId);
+      }
+    }
+    if (map && typeof map.keys === 'function') {
+      for (const k of map.keys()) add(k);
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (Array.isArray(mgr.availableModels)) {
+      for (const m of mgr.availableModels) {
+        if (typeof m === 'string') add(m);
+        else if (m) add(m.modelId || m.name || m.id);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  add(managerModelId(mgr));
+  return [...ids];
+}
+
+function versionKey(id) {
+  const nums = [];
+  const re = /(\d+)(?:\.(\d+))?/g;
+  let m;
+  while ((m = re.exec(String(id))) !== null) {
+    nums.push(Number(m[1]));
+    nums.push(m[2] != null ? Number(m[2]) : 0);
+  }
+  return nums;
+}
+
+/** 版本更高者更大；同版本优先非 -fast。 */
+function compareModelCandidates(a, b) {
+  const va = versionKey(a);
+  const vb = versionKey(b);
+  const n = Math.max(va.length, vb.length);
+  for (let i = 0; i < n; i++) {
+    const x = va[i] || 0;
+    const y = vb[i] || 0;
+    if (x !== y) return x - y;
+  }
+  const af = String(a).endsWith('-fast') ? 1 : 0;
+  const bf = String(b).endsWith('-fast') ? 1 : 0;
+  if (af !== bf) return bf - af;
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
+function pickLatestMatching(spec, candidates) {
+  if (!isGlobSpec(spec)) return spec;
+  const re = globToRegExp(spec);
+  const matched = (candidates || []).filter((id) => re.test(String(id)));
+  if (!matched.length) return null;
+  matched.sort(compareModelCandidates);
+  return matched[matched.length - 1];
+}
+
+/** 把配置里的通配符解析成当前可用最新模型 id。 */
+function expandModelSpec(spec, mgr) {
+  if (!spec) return null;
+  const raw = String(spec);
+  if (!isGlobSpec(raw)) return raw;
+  const candidates = listAvailableModelIds(mgr);
+  const picked = pickLatestMatching(raw, candidates);
+  if (picked) {
+    debugLog({
+      ev: 'glob_expand',
+      pattern: raw,
+      picked,
+      candidateCount: candidates.length,
+    });
+    return picked;
+  }
+  debugLog({
+    ev: 'glob_expand_miss',
+    pattern: raw,
+    candidateCount: candidates.length,
+  });
+  return null;
+}
+
 function resolveModel(mode) {
   const key = String(mode || 'default');
-  return models[key] || models.default || null;
+  const spec = models[key] || models.default || null;
+  return expandModelSpec(spec, globalThis.__cursorModeModelManager);
 }
 
 /** 读模式：会话权威值 > 事件缓存；都没有则返回 null（禁止瞎猜 default）。 */
@@ -380,11 +496,13 @@ function beforeBuildRequested(mgr) {
     return undefined;
   }
   const forced = resolveModel(mode);
+  const pattern = models[String(mode)] || models.default || null;
   const current = managerModelId(mgr);
   debugLog({
     ev: 'before_build',
     mode,
     forcedModel: forced,
+    pattern,
     managerModel: current,
     normalizedForced: normalizeModelId(mgr, forced),
     normalizedCurrent: normalizeModelId(mgr, current),
@@ -715,6 +833,10 @@ export {
   currentMode,
   modeKnown,
   resolveModel,
+  expandModelSpec,
+  pickLatestMatching,
+  isGlobSpec,
+  listAvailableModelIds,
   normalizeModelId,
   modelsEquivalent,
   patchSource,

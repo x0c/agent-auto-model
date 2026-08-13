@@ -12,23 +12,36 @@ import (
 	"github.com/x0c/cursor-mode-model/internal/paths"
 )
 
-// DefaultModels 默认映射：Plan→Opus 5，其它→Grok 4.5。
+// DefaultModels 默认映射：Plan→Opus 5，其它→当前最新 Grok high（通配符运行时解析）。
 var DefaultModels = map[string]string{
 	"plan":    "claude-opus-5-thinking-high",
-	"default": "cursor-grok-4.5-high-fast",
-	"search":  "cursor-grok-4.5-high-fast",
-	"debug":   "cursor-grok-4.5-high-fast",
+	"default": "cursor-grok-*-high",
+	"search":  "cursor-grok-*-high",
+	"debug":   "cursor-grok-*-high",
 }
+
+const (
+	DefaultAutoUpdateChannel            = "github_release"
+	DefaultAutoUpdateCheckIntervalHours = 24
+)
 
 // ValidModes 可配置的 Mode 键（CLI --mode ask 对应内部 search）。
 var ValidModes = []string{"plan", "default", "search", "debug"}
 
 // Config 用户可改配置。
 type Config struct {
-	Version int               `json:"version"`
-	Enabled bool              `json:"enabled"`
-	Strict  bool              `json:"strict"`
-	Models  map[string]string `json:"models"`
+	Version    int               `json:"version"`
+	Enabled    bool              `json:"enabled"`
+	Strict     bool              `json:"strict"`
+	Models     map[string]string `json:"models"`
+	AutoUpdate AutoUpdateConfig  `json:"auto_update"`
+}
+
+// AutoUpdateConfig 控制静默自更新。
+type AutoUpdateConfig struct {
+	Enabled            bool   `json:"enabled"`
+	CheckIntervalHours int    `json:"check_interval_hours"`
+	Channel            string `json:"channel"`
 }
 
 // Default 返回默认配置副本。
@@ -37,7 +50,17 @@ func Default() Config {
 	for k, v := range DefaultModels {
 		models[k] = v
 	}
-	return Config{Version: 1, Enabled: true, Strict: false, Models: models}
+	return Config{
+		Version: 1,
+		Enabled: true,
+		Strict:  false,
+		Models:  models,
+		AutoUpdate: AutoUpdateConfig{
+			Enabled:            true,
+			CheckIntervalHours: DefaultAutoUpdateCheckIntervalHours,
+			Channel:            DefaultAutoUpdateChannel,
+		},
+	}
 }
 
 // IsValidMode 判断 mode 键是否合法。
@@ -71,10 +94,15 @@ func Load(home string) Config {
 		return Default()
 	}
 	var raw struct {
-		Version int               `json:"version"`
-		Enabled *bool             `json:"enabled"`
-		Strict  *bool             `json:"strict"`
-		Models  map[string]string `json:"models"`
+		Version    int               `json:"version"`
+		Enabled    *bool             `json:"enabled"`
+		Strict     *bool             `json:"strict"`
+		Models     map[string]string `json:"models"`
+		AutoUpdate *struct {
+			Enabled            *bool  `json:"enabled"`
+			CheckIntervalHours *int   `json:"check_interval_hours"`
+			Channel            string `json:"channel"`
+		} `json:"auto_update"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return Default()
@@ -96,6 +124,17 @@ func Load(home string) Config {
 			}
 		}
 	}
+	if raw.AutoUpdate != nil {
+		if raw.AutoUpdate.Enabled != nil {
+			out.AutoUpdate.Enabled = *raw.AutoUpdate.Enabled
+		}
+		if raw.AutoUpdate.CheckIntervalHours != nil && *raw.AutoUpdate.CheckIntervalHours > 0 {
+			out.AutoUpdate.CheckIntervalHours = *raw.AutoUpdate.CheckIntervalHours
+		}
+		if strings.TrimSpace(raw.AutoUpdate.Channel) != "" {
+			out.AutoUpdate.Channel = strings.TrimSpace(raw.AutoUpdate.Channel)
+		}
+	}
 	return out
 }
 
@@ -106,6 +145,12 @@ func Save(home string, cfg Config) error {
 	}
 	if cfg.Models == nil {
 		cfg.Models = Default().Models
+	}
+	if cfg.AutoUpdate.CheckIntervalHours <= 0 {
+		cfg.AutoUpdate.CheckIntervalHours = DefaultAutoUpdateCheckIntervalHours
+	}
+	if strings.TrimSpace(cfg.AutoUpdate.Channel) == "" {
+		cfg.AutoUpdate.Channel = DefaultAutoUpdateChannel
 	}
 	payload, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
@@ -190,6 +235,29 @@ func SetEnabled(home string, enabled bool) (Config, error) {
 func SetStrict(home string, strict bool) (Config, error) {
 	cfg := Load(home)
 	cfg.Strict = strict
+	if err := Save(home, cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// SetAutoUpdateEnabled 开关静默自更新。
+func SetAutoUpdateEnabled(home string, enabled bool) (Config, error) {
+	cfg := Load(home)
+	cfg.AutoUpdate.Enabled = enabled
+	if err := Save(home, cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// SetAutoUpdateInterval 设置静默自更新检查间隔（小时）。
+func SetAutoUpdateInterval(home string, hours int) (Config, error) {
+	if hours <= 0 {
+		return Config{}, errors.New("检查间隔必须大于 0 小时")
+	}
+	cfg := Load(home)
+	cfg.AutoUpdate.CheckIntervalHours = hours
 	if err := Save(home, cfg); err != nil {
 		return Config{}, err
 	}

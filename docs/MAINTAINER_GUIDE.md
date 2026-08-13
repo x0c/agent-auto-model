@@ -23,6 +23,10 @@
 
 `claude-opus-5-thinking-high` 经官方 `mapModelToParameterizedSelection` 会变成 `claude-opus-5` + thinking/effort 参数。比较与强制必须用归一后的 id，并保留 `getParametersForModel` 参数，否则会悄悄降档。
 
+### 通配符模型
+
+配置可写 `cursor-grok-*-high` 这类 shell 通配符。预加载在发送前用 `parameterizedModelMap` / `availableModels` 收集候选，按版本号选最新；同版本优先非 `-fast`。展开失败时故障开放（本轮不强制），并写 `glob_expand_miss` 诊断。
+
 ### 发送前强制与严格模式
 
 - 默认：发送前纠正内存选择，并异步走官方 API；失败只告警。
@@ -63,6 +67,15 @@ CLI `--mode` 只接受 `plan` / `ask`（Ask 内部是 `search`）；Agent 模式
 `install` 在 `~/.local/share/cursor-mode-model/bin/` 写入包装脚本（Unix）或 `.cmd`（Windows），并尽量 prepend 进 shell rc / 用户 PATH；`uninstall` 必须对称清理。官方入口通常在 `~/.local/share/cursor-agent/versions/<ver>/cursor-agent`（Windows 也可能在 `%LOCALAPPDATA%\cursor-agent\versions\`）。
 
 shell **函数 / alias 优先于 PATH**——`status.wrapper_effective` 会反映。
+
+## 静默自更新
+
+- 入口：普通 `cursor-mode-model ...` 子命令会在执行前按间隔检查更新；`agent` / `cursor-agent` 包装路径会先拉起后台子进程执行 `cursor-mode-model update --auto --quiet`，然后立即转调官方 Agent。
+- 更新源：固定走 GitHub Releases latest API，按 `cursor-mode-model_<version>_<os>_<arch>.{tar.gz|zip}` 选当前平台资产。
+- 安装收尾：下载并替换二进制后，必须复用 `install.Install(...)` 刷新 wrapper、运行时资产和 PATH 片段，避免只换二进制不换包装。
+- 运行态文件：`~/.local/share/cursor-mode-model/autoupdate.json` 记录最近检查/安装/错误；`autoupdate.lock` 防止并发会话同时覆盖二进制。
+- 设计原则：更新失败一律故障开放，不阻断模型切换或 Agent 启动；诊断信息通过 `status` 暴露，不依赖终端噪音。
+- 测试时可用 `CURSOR_MODE_MODEL_UPDATE_LATEST_URL` 覆盖 latest API，指向本地 `httptest` 服务。
 
 ## 发版与双远端
 

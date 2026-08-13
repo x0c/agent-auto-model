@@ -6,6 +6,17 @@
 
 通用工程规范：[Go 规范](../_standards/go.md)
 
+## 交付闭环（强制）
+
+改完 Bug / 加完功能后，**自测通过即立刻发版**，不要等用户再说「发布一下」：
+
+1. 跑通本仓库验证命令（见 [cli/AGENTS.md](cli/AGENTS.md)）
+2. 按 SemVer 升版本、提交、打 `vX.Y.Z` tag
+3. 推双远端并执行 `cli/scripts/publish-release.sh`
+4. 回报：版本号、Release URL、Homebrew 配方是否已跟上
+
+未完成发版不得宣称任务结束。仅文档笔误、纯本地试验、或用户明确说「先别发」时可跳过。
+
 ## 文档导航
 
 - [cli/AGENTS.md](cli/AGENTS.md)：改、评审或发布本 CLI 前必读（含双远端与发版命令）。
@@ -48,7 +59,9 @@
 
 ## 发版要求
 
-功能/修复验证通过后按 SemVer 升 `VERSION` 与 `main.version`，提交后：
+**交付闭环（强制）**：功能 / 修复自测通过后立刻发版，**不要等用户再 trigger**。未发版不得收工。
+
+自测通过后按 SemVer 升 `VERSION` 与 `main.version`，提交后：
 
 ```bash
 git tag vX.Y.Z
@@ -59,6 +72,14 @@ bash scripts/publish-release.sh vX.Y.Z
 
 公开安装渠道：Homebrew `x0c/tap/cursor-mode-model`、`install.sh`、`install.ps1`、`go install`。  
 CI 的 `release.yml` 只补其它平台包与配方兜底，**不得**作为唯一升级通路。
+
+用户侧升级：
+
+```bash
+brew upgrade x0c/tap/cursor-mode-model && cursor-mode-model install
+# 或
+curl -fsSL https://raw.githubusercontent.com/x0c/cursor-mode-model/main/install.sh | bash
+```
 
 ## 验证要求
 
