@@ -1,5 +1,7 @@
 # 维护指南
 
+命令面（`config set` / `disable` / 会话锁定）见 [CLI_USAGE_GUIDE.md](CLI_USAGE_GUIDE.md)，本文只覆盖挂钩实现、包装、自更新与发版。
+
 ## Mode→模型挂钩
 
 预加载脚本：`internal/assets/register.mjs`（经 `go:embed` 打进二进制，install/exec 时落到 `~/.local/share/agent-auto-model/assets/`）。

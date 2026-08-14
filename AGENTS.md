@@ -6,6 +6,16 @@
 
 通用工程规范：[Go 规范](../_standards/go.md)
 
+Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGENTS.md](cli/AGENTS.md) 为准。
+
+## 回答用法问题（强制）
+
+用户问本工具「是不是 CLI」「是否支持关闭」「怎么改默认模型」「命令是啥」时：
+
+1. 先读 [cli/docs/CLI_USAGE_GUIDE.md](cli/docs/CLI_USAGE_GUIDE.md) 或 [cli/README.zh-CN.md](cli/README.zh-CN.md) 的「用法」节，**不要翻源码**。
+2. **直接给出完整可复制命令**，禁止只答「支持」。
+3. 本项目就是命令行工具，用法问答必须贴命令；全局「面向用户不要抛命令参数」**不适用于本项目的用法问答**。
+
 ## 交付闭环（强制）
 
 改完 Bug / 加完功能后，**自测通过即立刻发版**，不要等用户再说「发布一下」：
@@ -19,7 +29,12 @@
 
 ## 文档导航
 
-- [cli/AGENTS.md](cli/AGENTS.md)：改、评审或发布本 CLI 前必读（含双远端与发版命令）。
+> 以下文档在涉及对应领域的开发、评审、排查或回答用户用法时先读取。
+
+- [cli/docs/CLI_USAGE_GUIDE.md](cli/docs/CLI_USAGE_GUIDE.md)：怎么用、改 Mode→模型映射、一键关闭/打开自动切换、会话锁定、`config` 子命令。
+- [cli/docs/MAINTAINER_GUIDE.md](cli/docs/MAINTAINER_GUIDE.md)：Cursor 挂钩、Codex 代理、PATH 包装、自更新、双远端发版、锚点漂移。
+- [cli/AGENTS.md](cli/AGENTS.md)：改、评审或发布本 CLI（验证命令、Remote、交付闭环）。
+- [cli/README.zh-CN.md](cli/README.zh-CN.md) / [cli/README.md](cli/README.md)：对外安装与用法（改映射、关闭自动切换、会话锁定）。
 - 公开仓库：`https://github.com/x0c/cursor-mode-model`
 - Forgejo 备份：`ssh://git@10.10.10.2:2222/Max/cursor-mode-model.git`
 
@@ -33,10 +48,17 @@
 
 # agent-auto-model CLI 规范
 
+## 回答用法问题（强制）
+
+用户问「是否支持关闭 / 怎么改默认模型 / 命令是啥」时：先读 `docs/CLI_USAGE_GUIDE.md` 或 README 的 Usage / 用法节，直接贴完整命令。禁止只答「支持」，禁止为回答用法去翻 `internal/app` / `internal/config`。本项目用法问答必须贴命令。
+
 ## 文档导航
 
-- `README.md` / `README.zh-CN.md`：对外安装、用法、FAQ（公开面零私有基础设施）
-- `docs/MAINTAINER_GUIDE.md`：改预加载挂钩、Codex 代理、包装安装、Ubuntu login PATH、Grok fast 参数、锚点漂移排障、双远端发版前必读
+> 以下文档在涉及对应领域的开发、评审、排查或回答用户用法时先读取。
+
+- `docs/CLI_USAGE_GUIDE.md`：怎么用、改 Mode→模型映射、一键关闭/打开自动切换、会话锁定、`config` 子命令
+- `README.md` / `README.zh-CN.md`：对外安装与用法（改映射、关闭自动切换、会话锁定）；与 CLI_USAGE_GUIDE 命令清单对齐
+- `docs/MAINTAINER_GUIDE.md`：Cursor 挂钩、Codex 代理、PATH 包装、Ubuntu login PATH、Grok fast、锚点漂移、自更新、双远端发版
 - `scripts/publish-release.sh`：本机发版收尾（Release 附件 + Homebrew 配方，防回退）
 - `scripts/bump-homebrew-formula.py`：配方 url/sha256 写入与版本回退防护
 
@@ -46,7 +68,7 @@
 - Cursor 内层：Node `registerHooks` 改写 Agent 打包 JS。锚点唯一来源：`internal/assets/anchors.json`。
 - Codex 内层：进程内 UDS WebSocket 代理，上游 `codex app-server --stdio`，TUI 以 `codex --remote unix://<临时 sock>` 连接；改写 `turn/start` / `thread/settings/update` 的 `model`+`effort`（及 `collaborationMode.settings`）。JSON-RPC 字段集中在 `internal/runtime/codex/rewrite`。
 - 配置 v2：`runtimes.cursor` / `runtimes.codex`；v1 扁平 `models` 读入时视为 Cursor 映射。
-- 显式 `--model` / `-m`：本会话不自动切换。
+- 显式 `--model`：Cursor 本会话不自动切换（包装只认 `--model` / `--model=`）。Codex 还认 `-m` / `-m=`。
 - 总开关：`AGENT_AUTO_MODEL=0`（兼容 `CURSOR_MODE_MODEL=0`）或 `config disable`。
 - Cursor 锚点漂移 / Codex 代理失败：故障开放。
 - 二进制名：`agent-auto-model`；`cursor-mode-model` 为过渡别名。Go module 仍为 `github.com/x0c/cursor-mode-model`（与公开 GitHub 仓库一致，保证 `go install`）。
@@ -91,3 +113,15 @@ node --test internal/assets/register.test.mjs
 go build -ldflags "-X main.version=$(tr -d '[:space:]' < VERSION)" -o /tmp/agent-auto-model ./cmd/agent-auto-model
 go build -ldflags "-X main.version=$(tr -d '[:space:]' < VERSION)" -o /tmp/cursor-mode-model ./cmd/cursor-mode-model
 ```
+
+## 领域地图（doc-init）
+
+<!-- 覆盖度复核基线：2026-08-14 · 源码指纹 扫描 59 文件 / Go 32 · Ruby 2 · Python 1 / 0 子模块 · 基线提交 e1c135d -->
+
+| 领域 | 入口锚点 |
+|------|---------|
+| 命令面与 Mode 映射 | internal/app/ · internal/config/ · cmd/agent-auto-model/ · cmd/cursor-mode-model/ · internal/status/ |
+| Cursor 挂钩 | internal/assets/ · internal/anchors/ |
+| Codex 代理 | internal/runtime/ · internal/runtime/codex/ |
+| 安装与 PATH 包装 | internal/install/ · internal/wrap/ · internal/agentbin/ · internal/paths/ |
+| 发版与自更新 | scripts/ · internal/autoupdate/ · Formula/ |

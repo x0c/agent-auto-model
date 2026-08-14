@@ -5,41 +5,31 @@
 
 Languages: English | [简体中文](README.zh-CN.md)
 
-Auto-switch **agent CLI** models by Mode. Currently:
+When you switch **Mode** in Cursor Agent CLI or Codex CLI, this tool switches the **model** for you. After install, keep using `agent` / `codex` as usual.
 
-- **Cursor Agent CLI** — Plan → Claude Opus, everything else → Grok, with real request-path enforcement
-- **Codex CLI** — Plan → `gpt-5.6-sol:high`, everything else → `gpt-5.6-terra:medium`, by rewriting app-server JSON-RPC
-
-`cursor-mode-model` remains a compatibility alias.
+`cursor-mode-model` is a compatibility alias for the same binary.
 
 **Supported platforms:** macOS · Linux · Windows
 
-## Features
+This tool does not bill models. You still need Cursor Agent CLI and/or Codex CLI, plus whatever those tools charge.
 
-- Per-runtime Mode → model maps (`cursor`: plan / default / search / debug; `codex`: plan / default)
-- Cursor: enforce the mapped model on the real send path (resume-safe)
-- Codex: intercept `turn/start` and `thread/settings/update` (Shift+Tab Plan mode included)
-- Silent self-update from GitHub Releases with status diagnostics
-- CLI config: `show` / `set` / `set-many` / `enable` / `disable` / `set-strict` / `set-auto-update` / `set-update-interval` / `reset` (+ `--json`)
-- Optional `strict` mode (Cursor): abort send if correction fails
-- Explicit `--model` / `-m` locks the session (no auto-switch)
-- Audit log of recent decisions via `status`
+## Out of the box
 
-## Prerequisites
+| Tool | Plan | Everything else |
+|---|---|---|
+| Cursor Agent CLI | `claude-opus-5-thinking-high` | `cursor-grok-*-high` (latest matching Grok High) |
+| Codex CLI | `gpt-5.6-sol:high` | `gpt-5.6-terra:medium` |
 
-Install the CLIs you actually use:
-
-```bash
-# Cursor Agent CLI
-curl https://cursor.com/install -fsS | bash
-
-# Codex CLI
-npm install -g @openai/codex
-```
-
-This tool does not bill models by itself.
+Cursor also maps Ask → `search` and Debug → `debug` (same default as Agent). Codex only has Plan vs Default.
 
 ## Install
+
+First install the CLIs you actually use:
+
+```bash
+curl https://cursor.com/install -fsS | bash   # Cursor Agent CLI
+npm install -g @openai/codex                 # Codex CLI
+```
 
 ### macOS / Linux (Homebrew)
 
@@ -69,79 +59,133 @@ go install github.com/x0c/cursor-mode-model/cmd/agent-auto-model@latest
 agent-auto-model install
 ```
 
-Open a **new terminal** after install so PATH wrappers take effect.
-
-## Quick Start
+Open a **new terminal**, then check:
 
 ```bash
 agent-auto-model status
-agent-auto-model config set cursor.plan claude-opus-5-thinking-high
-agent-auto-model config set cursor.default 'cursor-grok-*-high'
-agent-auto-model config set codex.plan gpt-5.6-sol:high
-agent-auto-model config set codex.default gpt-5.6-terra:medium
+```
+
+You want `active=true`. Then start a **new** `agent` or `codex` session. Sessions already running will not pick up the install.
+
+## Usage
+
+### 1. Use it (nothing extra)
+
+```bash
 agent --mode plan
+agent
 codex
 ```
 
-Verify with `status` (look for `active=true`) and start a **new** session. Long-lived sessions started before install/config changes need a restart.
+Switch Mode as you normally would (Cursor Mode, Codex Shift+Tab Plan). The mapped model is applied on the real request path.
 
-Bare `config set plan …` still means `cursor.plan` (deprecated prefix-less form).
+### 2. See the current mapping
 
-## Config CLI
-
-```text
-agent-auto-model status [--runtime cursor|codex|all] [--json]
-agent-auto-model install [--runtime cursor|codex] [--dry-run] [--json]
-agent-auto-model uninstall [--runtime cursor|codex] [--dry-run] [--json]
-agent-auto-model config show [--json]
-agent-auto-model config set <mode|runtime.mode> <model-id> [--json]
-agent-auto-model config set-many plan=... codex.plan=... [--json]
-agent-auto-model config enable|disable [--runtime cursor|codex] [--json]
-agent-auto-model config set-strict true|false [--json]
-agent-auto-model config set-auto-update true|false [--json]
-agent-auto-model config set-update-interval <hours> [--json]
-agent-auto-model config reset [--json]
-agent-auto-model update [--force] [--quiet] [--json]
+```bash
+agent-auto-model config show
+agent-auto-model status
 ```
 
-Cursor modes: `plan`, `default`, `search`, `debug` (`--mode ask` → `search`).  
-Codex modes: `plan`, `default`. Codex specs are `model[:effort]`, e.g. `gpt-5.6-sol:high`.
+### 3. Change a default model
 
-Model IDs may use shell-style wildcards (`*`, `?`). At request time the tool expands them against currently available models and picks the **latest** version.
+Replace the model id with whatever you want. These write to your config and stay until you change them again.
 
-Default mapping:
+```bash
+# Cursor: Plan / Agent / Ask / Debug
+agent-auto-model config set cursor.plan claude-opus-5-thinking-high
+agent-auto-model config set cursor.default 'cursor-grok-*-high'
+agent-auto-model config set cursor.search 'cursor-grok-*-high'
+agent-auto-model config set cursor.debug 'cursor-grok-*-high'
 
-| Runtime | Mode | Model |
-|---|---|---|
-| Cursor | Plan | `claude-opus-5-thinking-high` |
-| Cursor | Agent / Ask / Debug | `cursor-grok-*-high` (auto latest) |
-| Codex | Plan | `gpt-5.6-sol:high` |
-| Codex | Default | `gpt-5.6-terra:medium` |
+# Codex: Plan / Default  (value is model[:effort])
+agent-auto-model config set codex.plan gpt-5.6-sol:high
+agent-auto-model config set codex.default gpt-5.6-terra:medium
+
+# Several at once
+agent-auto-model config set-many cursor.plan=claude-opus-5-thinking-high codex.default=gpt-5.6-terra:medium
+```
+
+`config set plan …` (no prefix) still means `cursor.plan`. Codex **must** use `codex.plan` / `codex.default`.
+
+Model ids may include `*` / `?`. At request time the tool expands them against currently available models and picks the latest version.
+
+Restart any session that was already open.
+
+### 4. Turn auto-switch off (keep the tool installed)
+
+```bash
+# Both Cursor and Codex
+agent-auto-model config disable
+
+# One side only
+agent-auto-model config disable --runtime cursor
+agent-auto-model config disable --runtime codex
+
+# Turn it back on
+agent-auto-model config enable
+```
+
+This does **not** uninstall. Your mappings stay. Official CLIs still run; they just stop being rewritten.
+
+For the current shell only: `AGENT_AUTO_MODEL=0`.
+
+### 5. Pin a model for this session only
+
+Does **not** change saved defaults.
+
+```bash
+agent --model claude-opus-5-thinking-high
+codex --model gpt-5.6-sol:high
+codex -m gpt-5.6-sol:high          # Codex short flag; Cursor wrapper does not honor -m
+```
+
+In Codex TUI, picking a different model with `/model` also locks that session.
+
+### 6. Uninstall (remove the wrappers)
+
+```bash
+agent-auto-model uninstall
+```
+
+Use this when you want `agent` / `codex` to be the official binaries again. To only pause switching, use `config disable`.
+
+Restore factory mappings:
+
+```bash
+agent-auto-model config reset
+```
+
+## Command reference
+
+| Command | What it does |
+|---|---|
+| `status` | Is wrapping actually on PATH? Is switching on? |
+| `config show` | Print saved Mode → model maps |
+| `config set <runtime.mode> <model>` | Change one mapping |
+| `config set-many a=… b=…` | Change several mappings |
+| `config disable` / `enable` | Pause / resume auto-switch (`--runtime cursor\|codex` for one side) |
+| `config set-strict true\|false` | Cursor: abort the send if correction fails |
+| `config set-auto-update true\|false` | Silent self-update from GitHub Releases |
+| `config set-update-interval <hours>` | How often to check for updates |
+| `config reset` | Factory maps and switches |
+| `install` / `uninstall` | Install or remove PATH wrappers |
+| `update` | Update this tool now |
+
+Add `--json` (or run without a TTY) for machine-readable output.
 
 ## How it works
 
-### Cursor
+**Cursor:** install puts wrappers ahead of official `agent` / `cursor-agent` on PATH. A Node preload forces the mapped model before the request is built (resume-safe). Explore / subagent models are left alone.
 
-1. Install puts thin wrappers ahead of official `agent` / `cursor-agent` on PATH.
-2. Wrappers inject a Node preload that patches Cursor Agent’s bundled JS.
-3. Mode is read from the session’s authoritative metadata (including resume).
-4. Before a request is built, the mapped model id is forced (unless locked by `--model`).
-
-### Codex
-
-1. Install puts a `codex` wrapper on PATH.
-2. Interactive TUI is launched as `codex --remote unix://<session-sock>` against a local app-server proxy.
-3. The proxy rewrites `thread/settings/update` and `turn/start` from `collaborationMode` (Shift+Tab Plan included).
-4. Non-interactive subcommands (`exec`, `review`, `mcp`, …) pass through unchanged.
-5. If the proxy cannot start, the official `codex` is launched (fail-open).
+**Codex:** the `codex` wrapper proxies the interactive TUI and rewrites `model` / `effort` from Plan vs Default (including Shift+Tab). `exec` / `review` / `mcp` pass through. If the proxy cannot start, official `codex` runs unchanged.
 
 ## Limitations
 
-- Cursor: Explore / subagent models are **not** bound (by design).
-- Codex: `--remote` / app-server transport is experimental upstream; upgrades may require a tool update. Fail-open if the protocol drifts.
-- Sessions already running before install or config changes must be restarted.
-- If Cursor Agent ships a bundle that no longer matches our anchors, Cursor auto-switch pauses (Agent still runs). Check `status`.
-- Self-update only replaces this tool; it does not upgrade Cursor Agent or Codex.
+- Sessions started before install or config changes must be restarted.
+- If Cursor Agent’s bundle no longer matches our patch points, Cursor auto-switch pauses (Agent still runs). Check `status`.
+- Codex `--remote` is experimental upstream; protocol drift fail-opens.
+- Self-update only replaces this tool, not Cursor Agent or Codex.
+- `cursor agent` bypasses the wrapper. Use `agent` or `cursor-agent`.
 
 ## FAQ
 
@@ -149,19 +193,13 @@ Default mapping:
 No. It only wraps CLI entrypoints on your PATH.
 
 **Will it override `--model`?**  
-No. An explicit `--model` / `-m` locks that session.
+No. That flag locks the session and does not change saved defaults.
 
-**Why does `status` say inactive after install?**  
-Usually the wrapper is not first on PATH yet — open a new terminal. On Ubuntu login shells, `.profile` may re-prepend `~/.local/bin` after `.bashrc`; re-run `agent-auto-model install` and verify with `bash -l -c 'agent-auto-model status'`.
+**`status` says inactive after install?**  
+Open a new terminal so PATH picks up the wrapper. On Ubuntu login shells, `.profile` may re-prepend `~/.local/bin` after `.bashrc` — re-run `agent-auto-model install`, then `bash -l -c 'agent-auto-model status'`.
 
 **Codex TUI still shows the old model?**  
-Trust `~/.local/share/agent-auto-model/assets/codex-decisions.log`. After a successful rewrite, `thread/settings/updated` should carry the mapped `model` / `effort`. Restart the TUI after config changes.
-
-## Uninstall
-
-```bash
-agent-auto-model uninstall
-```
+Check `~/.local/share/agent-auto-model/assets/codex-decisions.log`. After a rewrite you should see the mapped `model` / `effort`. Restart the TUI after config changes.
 
 ## License
 

@@ -7,7 +7,7 @@ import (
 )
 
 // 由 -ldflags 注入。过渡别名：cursor-mode-model → agent-auto-model。
-var version = "1.0.0"
+var version = "1.0.1"
 
 func main() {
 	if version != "" {
