@@ -20,6 +20,8 @@
 
 Cursor 还会把 Ask 记成 `search`、Debug 记成 `debug`（默认模型和 Agent 一样）。Codex 只有 Plan 和 Default。
 
+默认跟随仓库里的推荐表，后台会自动更新。自己改过映射后会切成「本地自定义」，不再跟随仓库。已经开着的对话要重开一次才吃到新映射。
+
 ## 安装
 
 先装你实际会用的 Agent CLI：
@@ -161,8 +163,10 @@ agent-auto-model config reset
 |---|---|
 | `status` | 包装有没有排到 PATH 前面、自动切换开没开 |
 | `config show` | 打印已保存的 Mode → 模型 |
-| `config set <runtime.mode> <模型>` | 改一条映射 |
-| `config set-many a=… b=…` | 一次改多条 |
+| `config set <runtime.mode> <模型>` | 改一条映射（同时切成本地自定义） |
+| `config set-many a=… b=…` | 一次改多条（同时切成本地自定义） |
+| `config set-models-source recommended\|local` | 跟随仓库推荐，或改用本地自定义 |
+| `config refresh-recommended` | 立刻拉取最新推荐表 |
 | `config disable` / `enable` | 关掉 / 打开自动切换（可加 `--runtime cursor\|codex`） |
 | `config set-strict true\|false` | Cursor：纠正失败就阻断这次发送 |
 | `config set-auto-update true\|false` | 是否从 GitHub Releases 静默自更新 |

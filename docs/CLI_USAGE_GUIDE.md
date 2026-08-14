@@ -2,7 +2,7 @@
 
 ## 文档定位
 
-覆盖本工具的**用户命令**：查看状态、改 Mode→模型映射、开关自动切换、会话锁定、卸载。
+覆盖本工具的**用户命令**：查看状态、改 Mode→模型映射、推荐配置 vs 本地自定义、开关自动切换、会话锁定、卸载。
 
 对外 [README.md](../README.md) / [README.zh-CN.md](../README.zh-CN.md) 的 **Usage / 用法** 节必须能让陌生人照着敲；本文与 README 命令清单保持一致，并多写 Agent 约束（禁止只答「支持」、禁止为回答用法翻源码）。
 
@@ -59,6 +59,20 @@ agent-auto-model config set-many cursor.plan=claude-opus-5-thinking-high cursor.
 
 模型 ID 可用 `*` / `?` 通配符；发送前按当前可用模型展开，选最新版本。
 
+**改映射会把来源切成「本地自定义」**，之后不再跟随仓库推荐。要重新跟随：
+
+```bash
+agent-auto-model config set-models-source recommended
+```
+
+切回来时如果本地映射和推荐不一致，命令会提示这会覆盖你改过的映射。
+
+立刻拉一次仓库推荐（不改来源；来源仍是推荐配置时下次开对话才会用上）：
+
+```bash
+agent-auto-model config refresh-recommended
+```
+
 ### 一键关闭 / 打开自动切换
 
 ```bash
@@ -98,7 +112,8 @@ agent-auto-model config set-strict true|false          # Cursor：纠正失败�
 agent-auto-model config set-auto-update true|false
 agent-auto-model config set-update-interval <hours>
 agent-auto-model config set-models-source recommended|local
-agent-auto-model config reset                          # 恢复出厂映射与开关
+agent-auto-model config refresh-recommended
+agent-auto-model config reset                          # 恢复推荐配置与开关
 agent-auto-model uninstall                             # 卸包装
 ```
 
@@ -130,7 +145,7 @@ agent-auto-model config enable
 改命令面代码后：
 
 ```bash
-go test ./internal/app ./internal/config ./internal/wrap
+go test ./internal/app ./internal/config ./internal/recommended ./internal/wrap
 ```
 
 ## 领域引用

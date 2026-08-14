@@ -20,6 +20,8 @@ This tool does not bill models. You still need Cursor Agent CLI and/or Codex CLI
 
 Cursor also maps Ask → `search` and Debug → `debug` (same default as Agent). Codex only has Plan vs Default.
 
+These mappings follow the repo’s recommended table by default and update in the background. Changing a mapping switches you to a local copy that no longer follows the repo. Already-open sessions need a restart to pick up a new mapping.
+
 ## Install
 
 First install the CLIs you actually use:
@@ -163,8 +165,10 @@ agent-auto-model config reset
 |---|---|
 | `status` | Is wrapping actually on PATH? Is switching on? |
 | `config show` | Print saved Mode → model maps |
-| `config set <runtime.mode> <model>` | Change one mapping |
-| `config set-many a=… b=…` | Change several mappings |
+| `config set <runtime.mode> <model>` | Change one mapping (also switches to a local copy) |
+| `config set-many a=… b=…` | Change several mappings (also switches to a local copy) |
+| `config set-models-source recommended\|local` | Follow the repo table, or keep a local copy |
+| `config refresh-recommended` | Fetch the latest recommended table now |
 | `config disable` / `enable` | Pause / resume auto-switch (`--runtime cursor\|codex` for one side) |
 | `config set-strict true\|false` | Cursor: abort the send if correction fails |
 | `config set-auto-update true\|false` | Silent self-update from GitHub Releases |

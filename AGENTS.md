@@ -1,5 +1,5 @@
 <!-- managed:inherited-agents:start -->
-<!-- source: /Users/geraltgraham/Codes/cursor-mode-model/AGENTS.md -->
+<!-- source: /Users/geraltgraham/Codes/agent-auto-model/AGENTS.md -->
 # agent-auto-model
 
 独立工具：让 Cursor Agent CLI / Codex CLI 在会话 Mode 变化时自动切换模型。
@@ -31,10 +31,10 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 
 > 以下文档在涉及对应领域的开发、评审、排查或回答用户用法时先读取。
 
-- [cli/docs/CLI_USAGE_GUIDE.md](cli/docs/CLI_USAGE_GUIDE.md)：怎么用、改 Mode→模型映射、一键关闭/打开自动切换、会话锁定、`config` 子命令。
-- [cli/docs/MAINTAINER_GUIDE.md](cli/docs/MAINTAINER_GUIDE.md)：Cursor 挂钩、Codex 代理、PATH 包装、自更新、双远端发版、锚点漂移。
+- [cli/docs/CLI_USAGE_GUIDE.md](cli/docs/CLI_USAGE_GUIDE.md)：怎么用、改 Mode→模型映射、推荐配置 vs 本地自定义、一键关闭/打开自动切换、会话锁定、`config` 子命令。
+- [cli/docs/MAINTAINER_GUIDE.md](cli/docs/MAINTAINER_GUIDE.md)：Cursor 挂钩、Codex 代理、PATH 包装、自更新、双远端发版、锚点漂移、推荐模型配置。
 - [cli/AGENTS.md](cli/AGENTS.md)：改、评审或发布本 CLI（验证命令、Remote、交付闭环）。
-- [cli/README.zh-CN.md](cli/README.zh-CN.md) / [cli/README.md](cli/README.md)：对外安装与用法（改映射、关闭自动切换、会话锁定）。
+- [cli/README.zh-CN.md](cli/README.zh-CN.md) / [cli/README.md](cli/README.md)：对外安装与用法（改映射、跟随推荐、关闭自动切换、会话锁定）。
 - 公开仓库：`https://github.com/x0c/agent-auto-model`
 - Forgejo 备份：`ssh://git@10.10.10.2:2222/Max/agent-auto-model.git`
 
@@ -56,8 +56,8 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 
 > 以下文档在涉及对应领域的开发、评审、排查或回答用户用法时先读取。
 
-- `docs/CLI_USAGE_GUIDE.md`：怎么用、改 Mode→模型映射、一键关闭/打开自动切换、会话锁定、`config` 子命令
-- `README.md` / `README.zh-CN.md`：对外安装与用法（改映射、关闭自动切换、会话锁定）；与 CLI_USAGE_GUIDE 命令清单对齐
+- `docs/CLI_USAGE_GUIDE.md`：怎么用、改 Mode→模型映射、推荐配置 vs 本地自定义、一键关闭/打开自动切换、会话锁定、`config` 子命令
+- `README.md` / `README.zh-CN.md`：对外安装与用法（改映射、跟随推荐、关闭自动切换、会话锁定）；与 CLI_USAGE_GUIDE 命令清单对齐
 - `docs/MAINTAINER_GUIDE.md`：Cursor 挂钩、Codex 代理、PATH 包装、Ubuntu login PATH、Grok fast、锚点漂移、自更新、双远端发版
 - `scripts/publish-release.sh`：本机发版收尾（Release 附件 + Homebrew 配方，防回退）
 - `scripts/bump-homebrew-formula.py`：配方 url/sha256 写入与版本回退防护
@@ -68,12 +68,12 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 - Cursor 内层：Node `registerHooks` 改写 Agent 打包 JS。锚点唯一来源：`internal/assets/anchors.json`。
 - Codex 内层：进程内 UDS WebSocket 代理，上游 `codex app-server --stdio`，TUI 以 `codex --remote unix://<临时 sock>` 连接；改写 `turn/start` / `thread/settings/update` 的 `model`+`effort`（及 `collaborationMode.settings`）。JSON-RPC 字段集中在 `internal/runtime/codex/rewrite`。
 - 配置 v2：`runtimes.cursor` / `runtimes.codex`；v1 扁平 `models` 读入时视为 Cursor 映射。
+- 模型映射来源：`models_source=recommended|local`。缺省按内容推断（与内置推荐一致→推荐配置，否则本地自定义）。推荐文件：`recommended-models.json`，后台 ETag 刷新。`config set` 后切成本地自定义。切回：`config set-models-source recommended`。
 - 显式 `--model`：Cursor 本会话不自动切换（包装只认 `--model` / `--model=`）。Codex 还认 `-m` / `-m=`。
 - 总开关：`AGENT_AUTO_MODEL=0` 或 `config disable`。
 - Cursor 锚点漂移 / Codex 代理失败：故障开放。
 - 二进制名：`agent-auto-model`。Go module：`github.com/x0c/agent-auto-model`。
 - 配置/数据目录：`~/.config/agent-auto-model`、`~/.local/share/agent-auto-model`。安装时若发现旧配置目录会一次性迁走，并清掉本机残留的旧命令名。
-- 默认跟随仓库推荐映射；`config set` 后切成本地自定义。切回：`config set-models-source recommended`。
 
 ## Remote
 

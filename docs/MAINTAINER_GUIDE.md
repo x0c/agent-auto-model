@@ -1,6 +1,6 @@
 # 维护指南
 
-命令面（`config set` / `disable` / 会话锁定）见 [CLI_USAGE_GUIDE.md](CLI_USAGE_GUIDE.md)，本文只覆盖挂钩实现、包装、自更新与发版。
+命令面（`config set` / `disable` / 推荐来源 / 会话锁定）见 [CLI_USAGE_GUIDE.md](CLI_USAGE_GUIDE.md)，本文只覆盖挂钩实现、包装、自更新、推荐配置拉取与发版。
 
 ## Mode→模型挂钩
 
@@ -111,6 +111,16 @@ bash -l -c 'type -a codex | head -1'     # 应命中同一包装目录下的 cod
 - 安装收尾：下载并替换二进制后，必须复用 `install.Install(...)` 刷新 wrapper、运行时资产和 PATH 片段。
 - 运行态文件：`~/.local/share/agent-auto-model/autoupdate.json`。
 - 测试时可用 `AGENT_AUTO_MODEL_UPDATE_LATEST_URL` 覆盖 latest API。
+
+## 推荐模型配置
+
+- 权威文件：仓库根 `recommended-models.json`（与 `internal/recommended/recommended-models.json` 必须保持一致，单测对照）。
+- 客户端默认拉 `https://raw.githubusercontent.com/x0c/agent-auto-model/main/recommended-models.json`；测试用 `AGENT_AUTO_MODEL_RECOMMENDED_URL` 覆盖。
+- 检测：后台 `update --auto` 顺带做 ETag 条件请求，间隔约 6 小时；失败保留旧缓存，再没有则用内置副本。不要绑发版。
+- 运行态：`~/.local/share/agent-auto-model/recommended.json`。
+- 生效：`models_source=recommended` 时用缓存覆盖模型映射；`local` 时认用户文件。`config set` 会切到 `local`。
+- 单测默认不打网：二进制名含 `.test` 且未设 `AGENT_AUTO_MODEL_RECOMMENDED_URL` 时跳过拉取（避免其它包测试误打 GitHub）。设了 URL 时即使是测试也会请求。`AGENT_AUTO_MODEL_SKIP_RECOMMENDED_CHECK=1` 或 `AGENT_AUTO_MODEL_SKIP_UPDATE_CHECK=1` 同样跳过。
+- 后台刷新子进程只设 `BACKGROUND_UPDATE_CHILD=1`，禁止再带 `SKIP_UPDATE_CHECK=1`，否则子进程什么都不干。
 
 ## 发版与双远端
 
