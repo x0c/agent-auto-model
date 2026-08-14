@@ -4,5 +4,6 @@
   "setModelFromStoredId": "setModelFromStoredId(e,t){return p(this,void 0,void 0,(function*(){",
   "getCurrentModel": "getCurrentModel(){return this.deriveCurrentModelDetails()",
   "setMetadata": "setMetadata(e,t){this.metadataStore.set(e,t)}",
-  "buildRequestedModel": "buildRequestedModel(){var e,t,n,r;const o=this.currentSelectedModel;"
+  "buildRequestedModel": "buildRequestedModel(){var e,t,n,r;const o=this.currentSelectedModel;",
+  "subscribeModel": "subscribe(e){return this.listeners.add(e),e(this.getCurrentModel()),()=>{this.listeners.delete(e)}}"
 }

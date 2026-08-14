@@ -87,6 +87,8 @@ function loadAnchors() {
     setMetadata: 'setMetadata(e,t){this.metadataStore.set(e,t)}',
     buildRequestedModel:
       'buildRequestedModel(){var e,t,n,r;const o=this.currentSelectedModel;',
+    subscribeModel:
+      'subscribe(e){return this.listeners.add(e),e(this.getCurrentModel()),()=>{this.listeners.delete(e)}}',
   };
 }
 
@@ -138,7 +140,27 @@ function listAvailableModelIds(mgr) {
     if (Array.isArray(mgr.availableModels)) {
       for (const m of mgr.availableModels) {
         if (typeof m === 'string') add(m);
-        else if (m) add(m.modelId || m.name || m.id);
+        else if (m) {
+          add(m.modelId || m.name || m.id);
+          add(m.displayModelId);
+          if (Array.isArray(m.aliases)) {
+            for (const a of m.aliases) add(a);
+          }
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (Array.isArray(mgr.parameterizedModels)) {
+      for (const m of mgr.parameterizedModels) {
+        if (!m) continue;
+        add(m.name);
+        add(m.modelId);
+        if (Array.isArray(m.aliases)) {
+          for (const a of m.aliases) add(a);
+        }
       }
     }
   } catch {
@@ -532,12 +554,21 @@ function scheduleFlush() {
   globalThis.__cursorModeModelFlushTimer = setInterval(() => {
     n += 1;
     const pending = globalThis.__cursorModeModelPending;
-    const mgr = globalThis.__cursorModeModelManager;
+    const mgr =
+      globalThis.__cursorModeModelUiManager || globalThis.__cursorModeModelManager;
     if (pending != null && mgr) {
+      const modelId = resolveModel(pending);
+      if (!modelId) {
+        if (n >= 200) {
+          clearInterval(globalThis.__cursorModeModelFlushTimer);
+          globalThis.__cursorModeModelFlushTimer = undefined;
+        }
+        return;
+      }
       clearInterval(globalThis.__cursorModeModelFlushTimer);
       globalThis.__cursorModeModelFlushTimer = undefined;
       globalThis.__cursorModeModelPending = undefined;
-      void applyModel(resolveModel(pending), { reason: 'flush', gen: bumpGen() });
+      void applyModel(modelId, { reason: 'flush', gen: bumpGen() });
       return;
     }
     if (n >= 200) {
@@ -570,6 +601,74 @@ function writeLastUsedModel(modelId) {
   }
 }
 
+function onSubscribe(fn, mgr) {
+  if (typeof fn !== 'function') return;
+  if (!globalThis.__cursorModeModelUiListeners) {
+    globalThis.__cursorModeModelUiListeners = new Set();
+  }
+  globalThis.__cursorModeModelUiListeners.add(fn);
+  if (mgr) {
+    globalThis.__cursorModeModelUiManager = mgr;
+    stashManager(mgr);
+  }
+}
+
+function onUnsubscribe(fn) {
+  const set = globalThis.__cursorModeModelUiListeners;
+  if (set && typeof fn === 'function') set.delete(fn);
+}
+
+function modelDetailsFromMgr(mgr) {
+  if (!mgr) return null;
+  try {
+    if (typeof mgr.getCurrentModel === 'function') {
+      const cur = mgr.getCurrentModel();
+      if (cur) return cur;
+    }
+  } catch {
+    /* ignore */
+  }
+  return mgr.currentModel || null;
+}
+
+/** 同步推给 TUI：Ink 对 await 之后的 setState 经常不重绘底栏。 */
+function notifyUi(mgr) {
+  const target = mgr || globalThis.__cursorModeModelUiManager || globalThis.__cursorModeModelManager;
+  try {
+    if (target && typeof target.notifyListeners === 'function') target.notifyListeners();
+  } catch {
+    /* ignore */
+  }
+  const listeners = globalThis.__cursorModeModelUiListeners;
+  if (!listeners || listeners.size === 0) return;
+  const details = modelDetailsFromMgr(target);
+  for (const fn of listeners) {
+    try {
+      fn(details);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function scheduleReconcile(reason) {
+  if (disabled || locked) return;
+  if (globalThis.__cursorModeModelReconcileTimer) clearTimeout(globalThis.__cursorModeModelReconcileTimer);
+  globalThis.__cursorModeModelReconcileTimer = setTimeout(() => {
+    globalThis.__cursorModeModelReconcileTimer = undefined;
+    const mode = currentMode();
+    if (mode == null) return;
+    const target = resolveModel(mode);
+    const mgr = globalThis.__cursorModeModelUiManager || globalThis.__cursorModeModelManager;
+    if (!target || !mgr) return;
+    if (selectionMatchesSpec(mgr, target)) {
+      notifyUi(mgr);
+      return;
+    }
+    void applyModel(target, { reason: reason || 'reconcile', gen: bumpGen() });
+  }, 40);
+}
+
 function forceSelectedModel(mgr, modelId) {
   if (!mgr || !modelId) return;
   const want = mapSelection(mgr, modelId) || {
@@ -579,20 +678,29 @@ function forceSelectedModel(mgr, modelId) {
   const targetId = want.modelId;
   const parameters = want.parameters || [];
   mgr.currentSelectedModel = { modelId: targetId, parameters };
-  const prev = mgr.currentModel && typeof mgr.currentModel === 'object' ? mgr.currentModel : {};
-  mgr.currentModel = Object.assign({}, prev, {
-    modelId: targetId,
-    displayModelId: targetId,
-    displayName: prev.displayName || targetId,
-    displayNameShort: prev.displayNameShort || targetId,
-  });
+  const cfg =
+    globalThis.__cursorModeModelConfig ||
+    (mgr.configProvider && typeof mgr.configProvider.get === 'function' ? mgr.configProvider : null);
+  let details = null;
   try {
-    if (typeof mgr.notifyListeners === 'function') {
-      mgr.notifyListeners();
+    if (typeof mgr.createModelDetailsFromSelection === 'function' && cfg) {
+      details = mgr.createModelDetailsFromSelection(targetId, parameters, cfg);
     }
   } catch {
     /* ignore */
   }
+  if (details && typeof details === 'object') {
+    mgr.currentModel = details;
+  } else {
+    mgr.currentModel = {
+      modelId: targetId,
+      displayModelId: targetId,
+      displayName: targetId,
+      displayNameShort: targetId,
+      aliases: [],
+    };
+  }
+  notifyUi(mgr);
   return targetId;
 }
 
@@ -808,6 +916,8 @@ async function applyModel(modelId, opts) {
     }
     if (gen !== globalThis.__cursorModeModelGen) {
       debugLog({ ev: 'apply_stale', gen, currentGen: globalThis.__cursorModeModelGen, modelId });
+      // 官方 API 已落地，过期 apply 可能把 Plan 的 Opus 盖回 Grok。
+      scheduleReconcile('stale');
       return false;
     }
     if (!applied) {
@@ -841,6 +951,7 @@ async function applyModel(modelId, opts) {
       }
     }
     writeLastUsedModel(verified || modelId);
+    notifyUi(mgr);
     decisionLog({
       ev: 'apply_done',
       reason: options.reason || 'unspecified',
@@ -888,12 +999,20 @@ function syncMode(key, value, opts) {
     via: (opts && opts.via) || 'setMetadata',
     hasMgr: !!globalThis.__cursorModeModelManager,
   });
-  if (!modelId) return;
-  if (!globalThis.__cursorModeModelManager) {
+  if (!modelId) {
     globalThis.__cursorModeModelPending = value;
     scheduleFlush();
     return;
   }
+  const mgr =
+    globalThis.__cursorModeModelUiManager || globalThis.__cursorModeModelManager;
+  if (!mgr) {
+    globalThis.__cursorModeModelPending = value;
+    scheduleFlush();
+    return;
+  }
+  // 先同步改内存并推 TUI，再异步走官方 API。Ink 等 await 结束后常不重绘底栏。
+  forceSelectedModel(mgr, modelId);
   void applyModel(modelId, { reason: 'mode', gen });
 }
 
@@ -925,6 +1044,8 @@ const PATCH_SET_METADATA =
   'setMetadata(e,t){' + stashStoreCall + 'this.metadataStore.set(e,t);' + syncCall + '}';
 const PATCH_BUILD_REQUESTED =
   'buildRequestedModel(){typeof globalThis.__cursorModeModelBeforeBuild==="function"&&globalThis.__cursorModeModelBeforeBuild(this);var e,t,n,r;const o=this.currentSelectedModel;';
+const PATCH_SUBSCRIBE =
+  'subscribe(e){return globalThis.__cursorModeModelOnSubscribe&&globalThis.__cursorModeModelOnSubscribe(e,this),this.listeners.add(e),e(this.getCurrentModel()),()=>{this.listeners.delete(e);globalThis.__cursorModeModelOnUnsubscribe&&globalThis.__cursorModeModelOnUnsubscribe(e)}}';
 
 function patchSource(source) {
   if (typeof source !== 'string') return { source, hits: 0 };
@@ -944,6 +1065,7 @@ function patchSource(source) {
     [anchors.getCurrentModel, PATCH_GET_CURRENT],
     [anchors.setMetadata, PATCH_SET_METADATA],
     [anchors.buildRequestedModel, PATCH_BUILD_REQUESTED],
+    [anchors.subscribeModel, PATCH_SUBSCRIBE],
   ];
   for (const [src, patch] of pairs) {
     if (src && s.includes(src)) {
@@ -970,6 +1092,8 @@ globalThis.__cursorModeModelStash = stashManager;
 globalThis.__cursorModeModelStashStore = stashStore;
 globalThis.__cursorModeModelBeforeBuild = beforeBuildRequested;
 globalThis.__cursorModeModelNoteStored = noteStoredRestore;
+globalThis.__cursorModeModelOnSubscribe = onSubscribe;
+globalThis.__cursorModeModelOnUnsubscribe = onUnsubscribe;
 
 export {
   currentMode,
@@ -988,6 +1112,8 @@ export {
   patchSource,
   shouldPatchUrl,
   forceSelectedModel,
+  notifyUi,
+  onSubscribe,
   loadAnchors,
   anchors,
 };

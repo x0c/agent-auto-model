@@ -13,6 +13,7 @@ func TestDefinitionsFromEmbeddedJSON(t *testing.T) {
 		"getCurrentModel",
 		"setMetadata",
 		"buildRequestedModel",
+		"subscribeModel",
 	} {
 		if defs[key] == "" {
 			t.Fatalf("缺少锚点 %s", key)

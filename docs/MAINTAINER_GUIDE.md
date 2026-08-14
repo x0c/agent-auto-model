@@ -13,6 +13,7 @@
 - `setCurrentModel` / `setCurrentModelWithParameters` / `setModelFromStoredId`（抓模型管理器 + 配置；后者调用时武装恢复后对齐）
 - `getCurrentModel(){return this.deriveCurrentModelDetails()`（Mode 早于写模型时也能 stash）
 - `setMetadata(e,t){this.metadataStore.set(e,t)}`（Mode 变化入口；stash 会话 store，并 `subscribeToMetadata('mode')`）
+- `subscribe(e){return this.listeners.add(e),e(this.getCurrentModel()),()=>{this.listeners.delete(e)}}`（抓住 TUI 底栏订阅，Mode 变化时同步推模型，避免只改 Mode 标签、底栏仍显示旧模型）
 - `buildRequestedModel(){var e,t,n,r;const o=this.currentSelectedModel;`（**发送前强制**按当前 Mode 覆盖 `modelId`）
 
 ### 模式识别（P0）

@@ -23,6 +23,8 @@ const {
   forceSelectedModel,
   patchSource,
   shouldPatchUrl,
+  notifyUi,
+  onSubscribe,
   anchors,
 } = await import('./register.mjs');
 
@@ -37,6 +39,7 @@ test('anchors.json 与 loadAnchors 一致且含全部关键锚点', () => {
     'getCurrentModel',
     'setMetadata',
     'buildRequestedModel',
+    'subscribeModel',
   ]) {
     assert.equal(anchors[key], disk[key]);
     assert.ok(disk[key].length > 10);
@@ -195,12 +198,14 @@ test('patchSource 命中全部锚点', () => {
     anchors.setMetadata +
     ';' +
     anchors.buildRequestedModel +
-    'return o}';
+    'return o}' +
+    anchors.subscribeModel;
   const { source, hits } = patchSource(src);
-  assert.equal(hits, 6);
+  assert.equal(hits, 7);
   assert.ok(source.includes('__cursorModeModelStash'));
   assert.ok(source.includes('__cursorModeModelBeforeBuild'));
   assert.ok(source.includes('__cursorModeModelSync'));
+  assert.ok(source.includes('__cursorModeModelOnSubscribe'));
   // 幂等：已打过补丁不再改
   const again = patchSource(source);
   assert.equal(again.hits, 0);
@@ -213,4 +218,51 @@ test('shouldPatchUrl 只打 Cursor Agent 树', () => {
   );
   assert.equal(shouldPatchUrl('file:///tmp/other/app.js'), false);
   assert.equal(shouldPatchUrl('node:fs'), false);
+});
+
+test('forceSelectedModel 不沿用旧模型的 displayName', () => {
+  const mgr = {
+    currentSelectedModel: {
+      modelId: 'grok-4.6',
+      parameters: [{ id: 'fast', value: 'false' }],
+    },
+    currentModel: {
+      modelId: 'grok-4.6',
+      displayName: 'Cursor Grok 4.6 High',
+      displayNameShort: 'Cursor Grok 4.6 High',
+    },
+    createModelDetailsFromSelection(id) {
+      if (id === 'claude-opus-5') {
+        return {
+          modelId: 'claude-opus-5',
+          displayName: 'Opus 5 300K High',
+          displayNameShort: 'Opus 5 300K High',
+        };
+      }
+      return null;
+    },
+  };
+  globalThis.__cursorModeModelConfig = { get() { return {}; } };
+  globalThis.__cursorModeModelManager = mgr;
+  forceSelectedModel(mgr, 'claude-opus-5');
+  assert.equal(mgr.currentSelectedModel.modelId, 'claude-opus-5');
+  assert.equal(mgr.currentModel.displayName, 'Opus 5 300K High');
+});
+
+test('notifyUi 把当前模型推给 TUI subscribe 回调', () => {
+  const seen = [];
+  const mgr = {
+    currentModel: { modelId: 'claude-opus-5', displayName: 'Opus 5 300K High' },
+    getCurrentModel() {
+      return this.currentModel;
+    },
+    notifyListeners() {
+      seen.push('mgr');
+    },
+  };
+  onSubscribe((details) => {
+    seen.push(details && details.displayName);
+  }, mgr);
+  notifyUi(mgr);
+  assert.deepEqual(seen, ['mgr', 'Opus 5 300K High']);
 });
