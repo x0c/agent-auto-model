@@ -5,17 +5,17 @@
 #   bash scripts/publish-release.sh v0.2.0     # 显式指定
 #
 # 可选环境变量：
-#   CMM_SKIP_BINARIES=1  跳过构建/上传二进制
-#   CMM_SKIP_TAP=1       跳过更新 Homebrew 配方
-#   CMM_SKIP_CI_GATE=1   跳过发版前 go test
+#   AAM_SKIP_BINARIES=1  跳过构建/上传二进制
+#   AAM_SKIP_TAP=1       跳过更新 Homebrew 配方
+#   AAM_SKIP_CI_GATE=1   跳过发版前 go test
 #   HOMEBREW_TAP_TOKEN   写 tap 仓库用的令牌（默认取 gh auth token）
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-TAP_REPO="${CMM_TAP_REPO:-x0c/homebrew-tap}"
-SOURCE_REPO="${CMM_REPO:-x0c/cursor-mode-model}"
+TAP_REPO="${AAM_TAP_REPO:-x0c/homebrew-tap}"
+SOURCE_REPO="${AAM_REPO:-x0c/agent-auto-model}"
 FORMULA_NAME="agent-auto-model.rb"
 ALIAS_FORMULA_NAME="cursor-mode-model.rb"
 
@@ -31,8 +31,8 @@ fi
 VERSION="${TAG#v}"
 echo "==> 发布 ${TAG}"
 
-if [ "${CMM_SKIP_CI_GATE:-0}" = "1" ]; then
-  echo "==> 跳过发版前测试（CMM_SKIP_CI_GATE=1）"
+if [ "${AAM_SKIP_CI_GATE:-0}" = "1" ]; then
+  echo "==> 跳过发版前测试（AAM_SKIP_CI_GATE=1）"
 else
   echo "==> 发版前强制 go test + node register 测试"
   go test ./... || die "go test 未过，禁止发版收尾"
@@ -56,8 +56,8 @@ fi
 
 # ---- 2. 本机平台二进制 ----
 UPLOAD_FAILED=0
-if [ "${CMM_SKIP_BINARIES:-0}" = "1" ]; then
-  echo "==> 跳过二进制构建（CMM_SKIP_BINARIES=1）"
+if [ "${AAM_SKIP_BINARIES:-0}" = "1" ]; then
+  echo "==> 跳过二进制构建（AAM_SKIP_BINARIES=1）"
 else
   DIST="$(mktemp -d)"
   trap 'rm -rf "$DIST"' EXIT
@@ -88,10 +88,7 @@ else
   CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$ARCH" go build \
     -ldflags "-s -w -X main.version=${VERSION}" \
     -o "$DIST/agent-auto-model${EXT}" ./cmd/agent-auto-model
-  CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$ARCH" go build \
-    -ldflags "-s -w -X main.version=${VERSION}" \
-    -o "$DIST/cursor-mode-model${EXT}" ./cmd/cursor-mode-model
-  tar -C "$DIST" -czf "$DIST/$ARCHIVE" "agent-auto-model${EXT}" "cursor-mode-model${EXT}"
+  tar -C "$DIST" -czf "$DIST/$ARCHIVE" "agent-auto-model${EXT}"
   (
     cd "$DIST"
     shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
@@ -110,8 +107,8 @@ else
 fi
 
 # ---- 3. Homebrew 配方（源码归档编译，不依赖预编译附件）----
-if [ "${CMM_SKIP_TAP:-0}" = "1" ]; then
-  echo "==> 跳过 Homebrew 配方（CMM_SKIP_TAP=1）"
+if [ "${AAM_SKIP_TAP:-0}" = "1" ]; then
+  echo "==> 跳过 Homebrew 配方（AAM_SKIP_TAP=1）"
 else
   TOKEN="${HOMEBREW_TAP_TOKEN:-$(gh auth token)}"
   [ -n "$TOKEN" ] || die "拿不到可写 ${TAP_REPO} 的令牌"
@@ -125,28 +122,22 @@ else
   rc=0
   ARCHIVE_URL="$ARCHIVE_URL" SHA="$SHA" VERSION="$VERSION" \
     python3 "$ROOT/scripts/bump-homebrew-formula.py" "$FORMULA" || rc=$?
-  alias_rc=0
-  ARCHIVE_URL="$ARCHIVE_URL" SHA="$SHA" VERSION="$VERSION" \
-    python3 "$ROOT/scripts/bump-homebrew-formula.py" "$ALIAS_FORMULA" || alias_rc=$?
-  if [ "$rc" -eq 3 ] && [ "$alias_rc" -eq 3 ]; then
-    echo "==> 配方已是更新版本，跳过写入"
-    rm -rf "$WORK"
-  elif [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+  if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
     rm -rf "$WORK"; die "改写配方失败"
-  elif [ "$alias_rc" -ne 0 ] && [ "$alias_rc" -ne 3 ]; then
-    rm -rf "$WORK"; die "改写别名配方失败"
-  else
-    git -C "$WORK/tap" add "Formula/${FORMULA_NAME}" "Formula/${ALIAS_FORMULA_NAME}"
-    if git -C "$WORK/tap" diff --cached --quiet -- "Formula/${FORMULA_NAME}" "Formula/${ALIAS_FORMULA_NAME}"; then
-      echo "==> 配方已经指向 ${TAG}，无需改动"
-    else
-      git -C "$WORK/tap" -c user.name="x0c" -c user.email="x0c@users.noreply.github.com" \
-        commit -q -m "agent-auto-model ${VERSION}"
-      git -C "$WORK/tap" push -q origin main
-      echo "==> 配方已更新到 ${VERSION}"
-    fi
-    rm -rf "$WORK"
   fi
+  git -C "$WORK/tap" add "Formula/${FORMULA_NAME}"
+  if [ -f "$ALIAS_FORMULA" ]; then
+    git -C "$WORK/tap" rm -f "Formula/${ALIAS_FORMULA_NAME}"
+  fi
+  if git -C "$WORK/tap" diff --cached --quiet; then
+    echo "==> 配方已经指向 ${TAG}，无需改动"
+  else
+    git -C "$WORK/tap" -c user.name="x0c" -c user.email="x0c@users.noreply.github.com" \
+      commit -q -m "agent-auto-model ${VERSION}"
+    git -C "$WORK/tap" push -q origin main
+    echo "==> 配方已更新到 ${VERSION}"
+  fi
+  rm -rf "$WORK"
 fi
 
 echo

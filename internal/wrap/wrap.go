@@ -6,9 +6,9 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/x0c/cursor-mode-model/internal/assets"
-	"github.com/x0c/cursor-mode-model/internal/config"
-	"github.com/x0c/cursor-mode-model/internal/paths"
+	"github.com/x0c/agent-auto-model/internal/assets"
+	"github.com/x0c/agent-auto-model/internal/config"
+	"github.com/x0c/agent-auto-model/internal/paths"
 )
 
 // PrepareEnv 返回应合并进环境的键值；关闭时返回空 map。
@@ -17,7 +17,7 @@ func PrepareEnv(home string, args []string) (map[string]string, error) {
 	if config.GloballyDisabled() {
 		return out, nil
 	}
-	cfg := config.Load(home)
+	cfg := config.LoadEffective(home)
 	if !config.RuntimeEnabled(cfg, config.RuntimeCursor) {
 		return out, nil
 	}
@@ -30,11 +30,9 @@ func PrepareEnv(home string, args []string) (map[string]string, error) {
 	}
 	cfgPath := paths.RuntimeConfigFile(home)
 	out[paths.EnvConfig] = cfgPath
-	out[paths.LegacyEnvConfig] = cfgPath
 	out["NODE_OPTIONS"] = appendFlag(os.Getenv("NODE_OPTIONS"), "--import="+register)
 	if argvHasExplicitModel(args) {
 		out[paths.EnvLock] = "1"
-		out[paths.LegacyEnvLock] = "1"
 	}
 	return out, nil
 }

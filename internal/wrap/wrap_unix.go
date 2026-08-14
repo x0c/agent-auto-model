@@ -7,7 +7,7 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/x0c/cursor-mode-model/internal/agentbin"
+	"github.com/x0c/agent-auto-model/internal/agentbin"
 )
 
 // Exec 解析官方 agent，注入环境后替换当前进程。

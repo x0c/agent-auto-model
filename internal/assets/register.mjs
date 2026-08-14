@@ -10,17 +10,16 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const unitTest = String(process.env.CURSOR_MODE_MODEL_UNIT_TEST || process.env.AGENT_AUTO_MODEL_UNIT_TEST || '').trim() === '1';
-const disabled =
-  String(process.env.AGENT_AUTO_MODEL || process.env.CURSOR_MODE_MODEL || '1').trim() === '0';
-const locked = Boolean(process.env.AGENT_AUTO_MODEL_LOCK || process.env.CURSOR_MODE_MODEL_LOCK);
+const unitTest = String(process.env.AGENT_AUTO_MODEL_UNIT_TEST || '').trim() === '1';
+const disabled = String(process.env.AGENT_AUTO_MODEL || '1').trim() === '0';
+const locked = Boolean(process.env.AGENT_AUTO_MODEL_LOCK);
 const DECISIONS_LOG = join(here, 'decisions.log');
 const DECISIONS_MAX_BYTES = 1024 * 1024;
 const ALERT_COOLDOWN_MS = 8000;
 
 function debugLog(obj) {
   if (
-    String(process.env.AGENT_AUTO_MODEL_DEBUG || process.env.CURSOR_MODE_MODEL_DEBUG || '').trim() !==
+    String(process.env.AGENT_AUTO_MODEL_DEBUG || '').trim() !==
     '1'
   )
     return;
@@ -42,7 +41,7 @@ function loadJSON(path) {
 
 function loadConfig() {
   const fromEnv =
-    process.env.AGENT_AUTO_MODEL_CONFIG || process.env.CURSOR_MODE_MODEL_CONFIG;
+    process.env.AGENT_AUTO_MODEL_CONFIG;
   const candidates = [];
   if (fromEnv) candidates.push(fromEnv);
   candidates.push(join(here, 'config.json'));
@@ -455,7 +454,7 @@ function alertOnce(message) {
   const last = globalThis.__cursorModeModelLastAlertAt || 0;
   if (now - last < ALERT_COOLDOWN_MS) return;
   globalThis.__cursorModeModelLastAlertAt = now;
-  console.error('[cursor-mode-model]', message);
+  console.error('[agent-auto-model]', message);
 }
 
 function ensureModeSubscription(store) {
@@ -680,7 +679,7 @@ function beforeBuildRequested(mgr) {
       '）';
     alertOnce(msg);
     decisionLog({ ev: 'strict_block', mode, expected: forced, actual: managerModelId(mgr) });
-    throw new Error('[cursor-mode-model] ' + msg);
+    throw new Error('[agent-auto-model] ' + msg);
   }
   if (!selectionMatchesSpec(mgr, forced)) {
     alertOnce(

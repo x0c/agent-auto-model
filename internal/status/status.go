@@ -8,14 +8,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/x0c/cursor-mode-model/internal/agentbin"
-	"github.com/x0c/cursor-mode-model/internal/anchors"
-	"github.com/x0c/cursor-mode-model/internal/autoupdate"
-	"github.com/x0c/cursor-mode-model/internal/config"
-	"github.com/x0c/cursor-mode-model/internal/paths"
-	aamruntime "github.com/x0c/cursor-mode-model/internal/runtime"
-	"github.com/x0c/cursor-mode-model/internal/runtime/codex"
-	"github.com/x0c/cursor-mode-model/internal/wrap"
+	"github.com/x0c/agent-auto-model/internal/agentbin"
+	"github.com/x0c/agent-auto-model/internal/anchors"
+	"github.com/x0c/agent-auto-model/internal/autoupdate"
+	"github.com/x0c/agent-auto-model/internal/config"
+	"github.com/x0c/agent-auto-model/internal/paths"
+	"github.com/x0c/agent-auto-model/internal/recommended"
+	aamruntime "github.com/x0c/agent-auto-model/internal/runtime"
+	"github.com/x0c/agent-auto-model/internal/runtime/codex"
+	"github.com/x0c/agent-auto-model/internal/wrap"
 )
 
 // Decision 审计日志中的一条决策摘要。
@@ -44,30 +45,33 @@ type RuntimePayload struct {
 
 // Payload status 命令输出。
 type Payload struct {
-	EnabledConfig bool                     `json:"enabled_config"`
-	EnabledEnv    bool                     `json:"enabled_env"`
-	Strict        bool                     `json:"strict"`
-	Active        bool                     `json:"active"`
-	UserConfig    string                   `json:"user_config"`
-	Register      string                   `json:"register"`
-	RegisterOK    bool                     `json:"register_present"`
-	WrapperBin    string                   `json:"wrapper_bin"`
-	Models        map[string]string        `json:"models"`
-	Runtimes      []RuntimePayload         `json:"runtimes"`
-	AutoUpdate    autoupdate.RuntimeStatus `json:"auto_update"`
-	Hint          string                   `json:"hint,omitempty"`
+	EnabledConfig   bool                      `json:"enabled_config"`
+	EnabledEnv      bool                      `json:"enabled_env"`
+	Strict          bool                      `json:"strict"`
+	Active          bool                      `json:"active"`
+	UserConfig      string                    `json:"user_config"`
+	Register        string                    `json:"register"`
+	RegisterOK      bool                      `json:"register_present"`
+	WrapperBin      string                    `json:"wrapper_bin"`
+	Models          map[string]string         `json:"models"`
+	Runtimes        []RuntimePayload          `json:"runtimes"`
+	AutoUpdate      autoupdate.RuntimeStatus  `json:"auto_update"`
+	ModelsSource    string                    `json:"models_source"`
+	ModelsSourceTag string                    `json:"models_source_tag"`
+	Recommended     recommended.RuntimeStatus `json:"recommended"`
+	Hint            string                    `json:"hint,omitempty"`
 
 	// 兼容旧字段（Cursor）。
-	WrapperEffective bool            `json:"wrapper_effective"`
-	PathAgent        string          `json:"path_agent"`
-	RealAgent        string          `json:"real_agent"`
-	Anchors          anchors.Result  `json:"anchors"`
-	RecentDecisions  []Decision      `json:"recent_decisions,omitempty"`
+	WrapperEffective bool           `json:"wrapper_effective"`
+	PathAgent        string         `json:"path_agent"`
+	RealAgent        string         `json:"real_agent"`
+	Anchors          anchors.Result `json:"anchors"`
+	RecentDecisions  []Decision     `json:"recent_decisions,omitempty"`
 }
 
 // Collect 收集状态。filter 为空表示全部 runtime。
 func Collect(home string, filter []string) Payload {
-	cfg := config.Load(home)
+	cfg := config.LoadEffective(home)
 	reg := paths.RegisterFile(home)
 	_, regErr := os.Stat(reg)
 	infos := aamruntime.Filter(filter)
@@ -97,6 +101,9 @@ func Collect(home string, filter []string) Payload {
 		Models:           config.ModelsFor(cfg, config.RuntimeCursor),
 		Runtimes:         runtimes,
 		AutoUpdate:       autoupdate.LoadRuntimeStatus(home),
+		ModelsSource:     cfg.ModelsSource,
+		ModelsSourceTag:  config.ModelsSourceTag(cfg.ModelsSource),
+		Recommended:      recommended.Status(home),
 		WrapperEffective: cursor.WrapperEffective,
 		PathAgent:        cursor.Wrappers["agent"],
 		RealAgent:        cursor.RealBinary,
@@ -108,6 +115,8 @@ func Collect(home string, filter []string) Payload {
 	}
 	if !p.EnabledConfig || !p.EnabledEnv {
 		p.Hint = "配置或环境变量已关闭自动切换。"
+	} else if cfg.ModelsSource == config.ModelsSourceLocal {
+		p.Hint = "模型映射来源是本地自定义，不会跟随仓库推荐配置。"
 	}
 	return p
 }
@@ -172,7 +181,7 @@ func wrapperEffective(home, pathAgent string) bool {
 	if strings.HasPrefix(pathAgent, wrapperDir+string(os.PathSeparator)) || pathAgent == wrapperDir {
 		return true
 	}
-	legacy := filepath.Join(paths.LegacyDataDir(home), "bin")
+	legacy := filepath.Join(paths.LeftoverDataDir(home), "bin")
 	if strings.HasPrefix(pathAgent, legacy+string(os.PathSeparator)) {
 		return true
 	}
@@ -181,7 +190,7 @@ func wrapperEffective(home, pathAgent string) bool {
 		return false
 	}
 	text := string(data)
-	return (strings.Contains(text, "agent-auto-model") || strings.Contains(text, "cursor-mode-model")) &&
+	return strings.Contains(text, "agent-auto-model") &&
 		(strings.Contains(text, " exec ") || strings.Contains(text, "\"exec\""))
 }
 

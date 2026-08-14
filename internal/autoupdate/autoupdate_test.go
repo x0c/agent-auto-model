@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/x0c/cursor-mode-model/internal/config"
-	"github.com/x0c/cursor-mode-model/internal/paths"
+	"github.com/x0c/agent-auto-model/internal/config"
+	"github.com/x0c/agent-auto-model/internal/paths"
 )
 
 func TestMaybeCheckAndUpdateInstallsNewVersion(t *testing.T) {

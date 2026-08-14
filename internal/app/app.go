@@ -9,14 +9,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/x0c/cursor-mode-model/internal/autoupdate"
-	"github.com/x0c/cursor-mode-model/internal/config"
-	"github.com/x0c/cursor-mode-model/internal/install"
-	"github.com/x0c/cursor-mode-model/internal/paths"
-	aamruntime "github.com/x0c/cursor-mode-model/internal/runtime"
-	"github.com/x0c/cursor-mode-model/internal/runtime/codex"
-	"github.com/x0c/cursor-mode-model/internal/status"
-	"github.com/x0c/cursor-mode-model/internal/wrap"
+	"github.com/x0c/agent-auto-model/internal/autoupdate"
+	"github.com/x0c/agent-auto-model/internal/config"
+	"github.com/x0c/agent-auto-model/internal/install"
+	"github.com/x0c/agent-auto-model/internal/paths"
+	"github.com/x0c/agent-auto-model/internal/recommended"
+	aamruntime "github.com/x0c/agent-auto-model/internal/runtime"
+	"github.com/x0c/agent-auto-model/internal/runtime/codex"
+	"github.com/x0c/agent-auto-model/internal/status"
+	"github.com/x0c/agent-auto-model/internal/wrap"
 )
 
 // Version 由 -ldflags 注入。
@@ -95,6 +96,8 @@ func usage() int {
   agent-auto-model config set-strict true|false [--json]
   agent-auto-model config set-auto-update true|false [--json]
   agent-auto-model config set-update-interval <hours> [--json]
+  agent-auto-model config set-models-source recommended|local [--json]
+  agent-auto-model config refresh-recommended [--json]
   agent-auto-model config reset [--json]
   agent-auto-model exec [--invoked-as NAME] -- [cli 参数...]
   agent-auto-model version
@@ -103,9 +106,10 @@ mode：plan / default / search / debug（Cursor；CLI --mode ask 对应 search�
 runtime.mode：codex.plan / codex.default；Cursor 可用 cursor.plan 或省略前缀。
 
 环境变量：
-  AGENT_AUTO_MODEL=0           总开关关闭（兼容 CURSOR_MODE_MODEL=0）
+  AGENT_AUTO_MODEL=0           总开关关闭
   AGENT_AUTO_MODEL_CONFIG      预加载读取的配置路径
   AGENT_AUTO_MODEL_LOCK=1      本会话禁止自动切换（显式 --model 时由包装自动设置）
+  AGENT_AUTO_MODEL_RECOMMENDED_URL  覆盖推荐配置拉取地址
 `)
 	return 2
 }
@@ -130,6 +134,12 @@ func cmdStatus(args []string) int {
 	fmt.Printf("  预加载：%s（存在=%v）\n", p.Register, p.RegisterOK)
 	fmt.Printf("  包装目录：%s\n", p.WrapperBin)
 	fmt.Printf("  严格模式：%v\n", p.Strict)
+	fmt.Printf("  模型映射来源：%s（%s）\n", p.ModelsSourceTag, p.ModelsSource)
+	fmt.Printf("  推荐配置：来源=%s 上次检查=%s\n",
+		emptyDash(p.Recommended.SourceTag), emptyDash(p.Recommended.LastCheckedAt))
+	if p.Recommended.LastError != "" {
+		fmt.Printf("  推荐配置错误：%s\n", p.Recommended.LastError)
+	}
 	for _, rt := range p.Runtimes {
 		fmt.Printf("  [%s] enabled=%v wrapper=%v\n", rt.Name, rt.Enabled, rt.WrapperEffective)
 		if rt.RealBinary != "" {
@@ -265,11 +275,20 @@ func cmdConfig(args []string) int {
 
 	switch sub {
 	case "show":
-		cfg := config.Load(home)
+		cfg := config.LoadEffective(home)
+		rec := recommended.Status(home)
 		if wantJSON {
-			return writeJSON(map[string]any{"ok": true, "data": cfg, "meta": map[string]any{"version": Version}})
+			return writeJSON(map[string]any{
+				"ok":   true,
+				"data": cfg,
+				"meta": map[string]any{
+					"version":           Version,
+					"models_source_tag": config.ModelsSourceTag(cfg.ModelsSource),
+					"recommended":       rec,
+				},
+			})
 		}
-		printConfig(cfg)
+		printConfig(cfg, rec)
 		return 0
 	case "set":
 		rest = stripFlag(rest, "--json")
@@ -285,17 +304,18 @@ func cmdConfig(args []string) int {
 		if !strings.Contains(rest[0], ".") {
 			fmt.Fprintln(os.Stderr, "提示：未写 runtime 前缀时视为 cursor."+mode+"；Codex 请用 config set codex.plan ...")
 		}
+		before := config.Load(home)
 		cfg, err := config.SetRuntimeModel(home, rt, mode, rest[1])
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			return 1
 		}
-		if wantJSON {
-			return writeJSON(map[string]any{"ok": true, "data": cfg, "meta": map[string]any{"version": Version, "hint": restartHint}})
+		hint := restartHint
+		switched := before.ModelsSource == config.ModelsSourceRecommended && cfg.ModelsSource == config.ModelsSourceLocal
+		if switched {
+			hint = sourceSwitchedHint()
 		}
-		fmt.Println(restartHint)
-		printConfig(cfg)
-		return 0
+		return configMutated(wantJSON, cfg, hint, switched)
 	case "set-many":
 		rest = stripFlag(rest, "--json")
 		pairs := map[string]string{}
@@ -311,17 +331,18 @@ func cmdConfig(args []string) int {
 			fmt.Fprintln(os.Stderr, "用法：config set-many plan=... codex.plan=...")
 			return 2
 		}
+		before := config.Load(home)
 		cfg, err := config.SetMany(home, pairs)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			return 1
 		}
-		if wantJSON {
-			return writeJSON(map[string]any{"ok": true, "data": cfg, "meta": map[string]any{"version": Version, "hint": restartHint}})
+		hint := restartHint
+		switched := before.ModelsSource == config.ModelsSourceRecommended && cfg.ModelsSource == config.ModelsSourceLocal
+		if switched {
+			hint = sourceSwitchedHint()
 		}
-		fmt.Println(restartHint)
-		printConfig(cfg)
-		return 0
+		return configMutated(wantJSON, cfg, hint, switched)
 	case "enable", "disable":
 		enabled := sub == "enable"
 		filter, err := runtimeNamesFromArgs(rest)
@@ -345,7 +366,7 @@ func cmdConfig(args []string) int {
 			fmt.Fprintln(os.Stderr, err.Error())
 			return 1
 		}
-		return configMutated(wantJSON, cfg, restartHint)
+		return configMutated(wantJSON, cfg, restartHint, false)
 	case "set-strict":
 		rest = stripFlag(rest, "--json")
 		rest = stripRuntimeFlags(rest)
@@ -363,7 +384,7 @@ func cmdConfig(args []string) int {
 			fmt.Fprintln(os.Stderr, err.Error())
 			return 1
 		}
-		return configMutated(wantJSON, cfg, restartHint)
+		return configMutated(wantJSON, cfg, restartHint, false)
 	case "set-auto-update":
 		rest = stripFlag(rest, "--json")
 		if len(rest) < 1 {
@@ -380,7 +401,7 @@ func cmdConfig(args []string) int {
 			fmt.Fprintln(os.Stderr, err.Error())
 			return 1
 		}
-		return configMutated(wantJSON, cfg, "已写入配置。静默自更新开关将在下一次命令执行时生效。")
+		return configMutated(wantJSON, cfg, "已写入配置。静默自更新开关将在下一次命令执行时生效。", false)
 	case "set-update-interval":
 		rest = stripFlag(rest, "--json")
 		if len(rest) < 1 {
@@ -397,31 +418,98 @@ func cmdConfig(args []string) int {
 			fmt.Fprintln(os.Stderr, err.Error())
 			return 1
 		}
-		return configMutated(wantJSON, cfg, "已写入配置。新的静默自更新检查间隔将在下一次命令执行时生效。")
+		return configMutated(wantJSON, cfg, "已写入配置。新的静默自更新检查间隔将在下一次命令执行时生效。", false)
+	case "set-models-source":
+		rest = stripFlag(rest, "--json")
+		if len(rest) < 1 {
+			fmt.Fprintln(os.Stderr, "用法：config set-models-source recommended|local")
+			return 2
+		}
+		stored := config.Load(home)
+		src, err := config.ParseModelsSource(rest[0])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			return 2
+		}
+		hint := restartHint
+		if src == config.ModelsSourceRecommended && stored.ModelsSource == config.ModelsSourceLocal && !config.MatchesRecommended(home, stored) {
+			hint = "已切换为推荐配置。这会覆盖你改过的模型映射。已打开的 Agent 会话需重启后才会使用新映射。"
+		}
+		cfg, err := config.SetModelsSource(home, src)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			return 1
+		}
+		return configMutated(wantJSON, cfg, hint, false)
+	case "refresh-recommended":
+		rest = stripFlag(rest, "--json")
+		err := recommended.MaybeRefresh(home, true)
+		cfg := config.LoadEffective(home)
+		if cfg.ModelsSource == config.ModelsSourceRecommended {
+			_ = config.SyncRuntime(home, cfg)
+		}
+		rec := recommended.Status(home)
+		if wantJSON {
+			meta := map[string]any{"version": Version, "recommended": rec}
+			if err != nil {
+				meta["error"] = err.Error()
+			}
+			return writeJSON(map[string]any{"ok": err == nil, "data": cfg, "meta": meta})
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "刷新推荐配置失败：%v\n", err)
+			printConfig(cfg, rec)
+			return 1
+		}
+		fmt.Println("已刷新推荐配置。来源为推荐配置时，已打开的会话需重启后才会使用新映射。")
+		printConfig(cfg, rec)
+		return 0
 	case "reset":
 		cfg, err := config.Reset(home)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			return 1
 		}
-		return configMutated(wantJSON, cfg, restartHint)
+		return configMutated(wantJSON, cfg, restartHint, false)
 	default:
 		fmt.Fprintf(os.Stderr, "未知 config 子命令：%s\n", sub)
 		return usage()
 	}
 }
 
-func configMutated(wantJSON bool, cfg config.Config, hint string) int {
+func configMutated(wantJSON bool, cfg config.Config, hint string, sourceSwitched bool) int {
+	home := paths.Home()
+	cfg = config.ApplyRecommended(home, cfg)
+	rec := recommended.Status(home)
 	if wantJSON {
-		return writeJSON(map[string]any{"ok": true, "data": cfg, "meta": map[string]any{"version": Version, "hint": hint}})
+		return writeJSON(map[string]any{
+			"ok":   true,
+			"data": cfg,
+			"meta": map[string]any{
+				"version":                Version,
+				"hint":                   hint,
+				"models_source_switched": sourceSwitched,
+				"models_source_tag":      config.ModelsSourceTag(cfg.ModelsSource),
+				"recommended":            rec,
+			},
+		})
 	}
 	fmt.Println(hint)
-	printConfig(cfg)
+	printConfig(cfg, rec)
 	return 0
 }
 
-func printConfig(cfg config.Config) {
+func sourceSwitchedHint() string {
+	return "已改为本地自定义，不再跟随仓库推荐配置。已打开的 Agent 会话需重启后才会使用新映射。切回推荐：agent-auto-model config set-models-source recommended"
+}
+
+func printConfig(cfg config.Config, rec recommended.RuntimeStatus) {
 	fmt.Printf("enabled=%v strict=%v version=%d\n", cfg.Enabled, cfg.Strict, cfg.Version)
+	fmt.Printf("  模型映射来源 → %s（%s）\n", config.ModelsSourceTag(cfg.ModelsSource), cfg.ModelsSource)
+	fmt.Printf("  推荐配置来源 → %s 上次检查=%s\n", emptyDash(rec.SourceTag), emptyDash(rec.LastCheckedAt))
+	if rec.LastError != "" {
+		fmt.Printf("  推荐配置错误 → %s\n", rec.LastError)
+	}
 	for _, name := range config.ValidRuntimes {
 		rt := cfg.Runtimes[name]
 		fmt.Printf("  [%s] enabled=%v\n", name, rt.Enabled)
@@ -467,11 +555,11 @@ func cmdUpdate(args []string) int {
 }
 
 func runPreflightUpdate(home, cmd string) {
-	if os.Getenv("AGENT_AUTO_MODEL_SKIP_UPDATE_CHECK") == "1" || os.Getenv("CURSOR_MODE_MODEL_SKIP_UPDATE_CHECK") == "1" {
+	if os.Getenv("AGENT_AUTO_MODEL_SKIP_UPDATE_CHECK") == "1" {
 		return
 	}
 	switch cmd {
-	case "install", "uninstall", "version", "--version", "-V", "help", "--help", "-h", "update":
+	case "install", "uninstall", "version", "--version", "-V", "help", "--help", "-h", "update", "exec":
 		return
 	}
 	self, err := os.Executable()

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/x0c/cursor-mode-model/internal/paths"
-	"github.com/x0c/cursor-mode-model/internal/runtime/codex/rewrite"
+	"github.com/x0c/agent-auto-model/internal/paths"
+	"github.com/x0c/agent-auto-model/internal/runtime/codex/rewrite"
 )
 
 func logDecision(home string, d *rewrite.Decision) {

@@ -86,9 +86,9 @@ CLI `--mode` 只接受 `plan` / `ask`（Ask 内部是 `search`）；Agent 模式
 
 ## 包装与 PATH
 
-`install` 在 `~/.local/share/agent-auto-model/bin/` 写入包装脚本（Unix）或 `.cmd`（Windows）：`agent`、`cursor-agent`、`codex`。旧目录 `~/.local/share/cursor-mode-model` 在读配置时仍作回退。
+`install` 在 `~/.local/share/agent-auto-model/bin/` 写入包装脚本（Unix）或 `.cmd`（Windows）：`agent`、`cursor-agent`、`codex`。安装时若发现旧配置目录会一次性迁走。
 
-**hook 范围**：`.zshrc`、`.bashrc`、`.zprofile`、**`.profile`**。标记行为 `# agent-auto-model PATH`（卸载时同时清旧 `# cursor-mode-model PATH`）。
+**hook 范围**：`.zshrc`、`.bashrc`、`.zprofile`、**`.profile`**。标记行为 `# agent-auto-model PATH`（安装/卸载时同时清掉本机残留的旧 PATH 标记）。
 
 **验收 login shell**（SSH / 图形终端常见）：
 
@@ -107,14 +107,14 @@ bash -l -c 'type -a codex | head -1'     # 应命中同一包装目录下的 cod
 ## 静默自更新
 
 - 入口：普通 `agent-auto-model ...` 子命令会在执行前按间隔检查更新；包装路径会先拉起后台子进程执行 `agent-auto-model update --auto --quiet`。
-- 更新源：固定走 GitHub Releases latest API，按 `agent-auto-model_<version>_<os>_<arch>.{tar.gz|zip}` 选当前平台资产（兼容旧名 `cursor-mode-model_*`）。
+- 更新源：固定走 GitHub Releases latest API，按 `agent-auto-model_<version>_<os>_<arch>.{tar.gz|zip}` 选当前平台资产。
 - 安装收尾：下载并替换二进制后，必须复用 `install.Install(...)` 刷新 wrapper、运行时资产和 PATH 片段。
 - 运行态文件：`~/.local/share/agent-auto-model/autoupdate.json`。
-- 测试时可用 `AGENT_AUTO_MODEL_UPDATE_LATEST_URL`（兼容 `CURSOR_MODE_MODEL_UPDATE_LATEST_URL`）覆盖 latest API。
+- 测试时可用 `AGENT_AUTO_MODEL_UPDATE_LATEST_URL` 覆盖 latest API。
 
 ## 发版与双远端
 
-- 公开协作 / Release / Homebrew 源：GitHub `x0c/cursor-mode-model`
+- 公开协作 / Release / Homebrew 源：GitHub `x0c/agent-auto-model`
 - 备份：Forgejo（见根/CLI `AGENTS.md` Remote 表）
 - 本机收尾：`bash scripts/publish-release.sh vX.Y.Z`（不等 CI 排队）
 - 配方仓库：复用 `x0c/homebrew-tap`，写入带版本回退防护

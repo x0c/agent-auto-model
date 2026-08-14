@@ -9,8 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/x0c/cursor-mode-model/internal/paths"
-	"github.com/x0c/cursor-mode-model/internal/runtime/codex/spec"
+	"github.com/x0c/agent-auto-model/internal/paths"
+	"github.com/x0c/agent-auto-model/internal/recommended"
+	"github.com/x0c/agent-auto-model/internal/runtime/codex/spec"
 )
 
 const (
@@ -19,21 +20,16 @@ const (
 
 	RuntimeCursor = "cursor"
 	RuntimeCodex  = "codex"
+
+	ModelsSourceRecommended = "recommended"
+	ModelsSourceLocal       = "local"
 )
 
-// DefaultCursorModels 默认映射：Plan→Opus 5，其它→当前最新 Grok high（通配符运行时解析）。
-var DefaultCursorModels = map[string]string{
-	"plan":    "claude-opus-5-thinking-high",
-	"default": "cursor-grok-*-high",
-	"search":  "cursor-grok-*-high",
-	"debug":   "cursor-grok-*-high",
-}
+// DefaultCursorModels 来自内置推荐配置：Plan→Opus 5，其它→当前最新 Grok high。
+var DefaultCursorModels = map[string]string{}
 
-// DefaultCodexModels Plan→sol-high，其它→terra-medium。
-var DefaultCodexModels = map[string]string{
-	"plan":    "gpt-5.6-sol:high",
-	"default": "gpt-5.6-terra:medium",
-}
+// DefaultCodexModels 来自内置推荐配置。
+var DefaultCodexModels = map[string]string{}
 
 // ValidCursorModes 可配置的 Cursor Mode 键（CLI --mode ask 对应内部 search）。
 var ValidCursorModes = []string{"plan", "default", "search", "debug"}
@@ -50,14 +46,22 @@ var DefaultModels = DefaultCursorModels
 // ValidModes 兼容旧调用：等于 Cursor modes。
 var ValidModes = ValidCursorModes
 
+func init() {
+	emb := recommended.Embedded()
+	DefaultCursorModels = emb.Models(RuntimeCursor)
+	DefaultCodexModels = emb.Models(RuntimeCodex)
+	DefaultModels = DefaultCursorModels
+}
+
 // Config 用户可改配置。
 type Config struct {
-	Version    int                      `json:"version"`
-	Enabled    bool                     `json:"enabled"`
-	Strict     bool                     `json:"strict"`
-	Models     map[string]string        `json:"models,omitempty"`
-	Runtimes   map[string]RuntimeConfig `json:"runtimes"`
-	AutoUpdate AutoUpdateConfig         `json:"auto_update"`
+	Version      int                      `json:"version"`
+	Enabled      bool                     `json:"enabled"`
+	Strict       bool                     `json:"strict"`
+	ModelsSource string                   `json:"models_source"`
+	Models       map[string]string        `json:"models,omitempty"`
+	Runtimes     map[string]RuntimeConfig `json:"runtimes"`
+	AutoUpdate   AutoUpdateConfig         `json:"auto_update"`
 }
 
 // RuntimeConfig 单个 Agent runtime 的开关与映射。
@@ -76,10 +80,11 @@ type AutoUpdateConfig struct {
 // Default 返回默认配置副本。
 func Default() Config {
 	return Config{
-		Version: 2,
-		Enabled: true,
-		Strict:  false,
-		Models:  copyMap(DefaultCursorModels),
+		Version:      2,
+		Enabled:      true,
+		Strict:       false,
+		ModelsSource: ModelsSourceRecommended,
+		Models:       copyMap(DefaultCursorModels),
 		Runtimes: map[string]RuntimeConfig{
 			RuntimeCursor: {Enabled: true, Models: copyMap(DefaultCursorModels)},
 			RuntimeCodex:  {Enabled: true, Models: copyMap(DefaultCodexModels)},
@@ -169,14 +174,14 @@ func Load(home string) Config {
 	data, err := os.ReadFile(path)
 	fromLegacy := false
 	if err != nil {
-		legacy := paths.LegacyUserConfigFile(home)
-		data, err = os.ReadFile(legacy)
+		leftover := paths.LeftoverUserConfigFile(home)
+		data, err = os.ReadFile(leftover)
 		if err != nil {
 			return Default()
 		}
 		fromLegacy = true
 	}
-	cfg, ok := parseConfig(data)
+	cfg, ok, inferred := parseConfig(data)
 	if !ok {
 		return Default()
 	}
@@ -184,19 +189,20 @@ func Load(home string) Config {
 		Version int `json:"version"`
 	}
 	_ = json.Unmarshal(data, &head)
-	if fromLegacy || head.Version < 2 {
+	if fromLegacy || head.Version < 2 || inferred {
 		_ = Save(home, cfg)
 	}
 	return cfg
 }
 
-func parseConfig(data []byte) (Config, bool) {
+func parseConfig(data []byte) (Config, bool, bool) {
 	var raw struct {
-		Version  int               `json:"version"`
-		Enabled  *bool             `json:"enabled"`
-		Strict   *bool             `json:"strict"`
-		Models   map[string]string `json:"models"`
-		Runtimes map[string]*struct {
+		Version      int               `json:"version"`
+		Enabled      *bool             `json:"enabled"`
+		Strict       *bool             `json:"strict"`
+		ModelsSource string            `json:"models_source"`
+		Models       map[string]string `json:"models"`
+		Runtimes     map[string]*struct {
 			Enabled *bool             `json:"enabled"`
 			Models  map[string]string `json:"models"`
 		} `json:"runtimes"`
@@ -207,7 +213,7 @@ func parseConfig(data []byte) (Config, bool) {
 		} `json:"auto_update"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return Config{}, false
+		return Config{}, false, false
 	}
 	out := Default()
 	if raw.Version > 0 {
@@ -264,7 +270,20 @@ func parseConfig(data []byte) (Config, bool) {
 		}
 	}
 	normalize(&out)
-	return out, true
+	inferred := false
+	if strings.TrimSpace(raw.ModelsSource) == "" {
+		out.ModelsSource = inferModelsSource(out)
+		inferred = true
+	} else {
+		src, err := ParseModelsSource(raw.ModelsSource)
+		if err != nil {
+			out.ModelsSource = inferModelsSource(out)
+			inferred = true
+		} else {
+			out.ModelsSource = src
+		}
+	}
+	return out, true, inferred
 }
 
 func normalize(cfg *Config) {
@@ -297,6 +316,11 @@ func normalize(cfg *Config) {
 	}
 	if strings.TrimSpace(cfg.AutoUpdate.Channel) == "" {
 		cfg.AutoUpdate.Channel = DefaultAutoUpdateChannel
+	}
+	if src, err := ParseModelsSource(cfg.ModelsSource); err == nil {
+		cfg.ModelsSource = src
+	} else if cfg.ModelsSource == "" {
+		cfg.ModelsSource = ModelsSourceRecommended
 	}
 }
 
@@ -386,6 +410,9 @@ func SetRuntimeModel(home, runtime, mode, modelID string) (Config, error) {
 		return Config{}, err
 	}
 	cfg := Load(home)
+	if cfg.ModelsSource == ModelsSourceRecommended {
+		cfg = snapshotRecommendedToLocal(home, cfg)
+	}
 	rt := cfg.Runtimes[runtime]
 	if rt.Models == nil {
 		rt.Models = map[string]string{}
@@ -407,6 +434,9 @@ func SetRuntimeModel(home, runtime, mode, modelID string) (Config, error) {
 // SetMany 批量设置 mode=model 或 runtime.mode=model 对。
 func SetMany(home string, pairs map[string]string) (Config, error) {
 	cfg := Load(home)
+	if cfg.ModelsSource == ModelsSourceRecommended {
+		cfg = snapshotRecommendedToLocal(home, cfg)
+	}
 	for raw, modelID := range pairs {
 		runtime, mode, err := ParseTarget(raw)
 		if err != nil {
@@ -507,8 +537,104 @@ func Reset(home string) (Config, error) {
 
 // GloballyDisabled 环境变量总开关为 0 时关闭。
 func GloballyDisabled() bool {
-	v := paths.EnvOrLegacy(paths.EnvDisable, paths.LegacyEnvDisable)
+	v := os.Getenv(paths.EnvDisable)
 	return v == "0"
+}
+
+// ParseModelsSource 解析 recommended / local（及其中文叫法）。
+func ParseModelsSource(raw string) (string, error) {
+	switch strings.TrimSpace(strings.ToLower(raw)) {
+	case ModelsSourceRecommended, "推荐配置":
+		return ModelsSourceRecommended, nil
+	case ModelsSourceLocal, "本地自定义":
+		return ModelsSourceLocal, nil
+	default:
+		return "", fmt.Errorf("非法模型映射来源 %q（允许：recommended 或 local）", raw)
+	}
+}
+
+// ModelsSourceTag 来源的中文展示名。
+func ModelsSourceTag(source string) string {
+	if source == ModelsSourceLocal {
+		return "本地自定义"
+	}
+	return "推荐配置"
+}
+
+// ApplyRecommended 在来源为推荐配置时，用本机缓存/内置覆盖模型映射。
+func ApplyRecommended(home string, cfg Config) Config {
+	if cfg.ModelsSource != ModelsSourceRecommended {
+		return cfg
+	}
+	return overlayRecommended(home, cfg)
+}
+
+// LoadEffective 读取用户配置并套上当前生效的模型映射。
+func LoadEffective(home string) Config {
+	return ApplyRecommended(home, Load(home))
+}
+
+// MatchesRecommended 本地存储的映射是否与当前推荐一致。
+func MatchesRecommended(home string, cfg Config) bool {
+	return matchesFile(cfg, recommended.Resolve(home))
+}
+
+// SetModelsSource 切换模型映射来源。切到本地自定义时先拍下当前推荐映射。
+func SetModelsSource(home, source string) (Config, error) {
+	src, err := ParseModelsSource(source)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg := Load(home)
+	if src == ModelsSourceLocal && cfg.ModelsSource != ModelsSourceLocal {
+		cfg = snapshotRecommendedToLocal(home, cfg)
+	} else {
+		cfg.ModelsSource = src
+	}
+	if err := Save(home, cfg); err != nil {
+		return Config{}, err
+	}
+	return ApplyRecommended(home, cfg), nil
+}
+
+func snapshotRecommendedToLocal(home string, cfg Config) Config {
+	cfg = overlayRecommended(home, cfg)
+	cfg.ModelsSource = ModelsSourceLocal
+	return cfg
+}
+
+func overlayRecommended(home string, cfg Config) Config {
+	rec := recommended.Resolve(home)
+	if cfg.Runtimes == nil {
+		cfg.Runtimes = map[string]RuntimeConfig{}
+	}
+	for _, name := range ValidRuntimes {
+		rt := cfg.Runtimes[name]
+		rt.Models = rec.Models(name)
+		cfg.Runtimes[name] = rt
+	}
+	cfg.Models = copyMap(cfg.Runtimes[RuntimeCursor].Models)
+	return cfg
+}
+
+func inferModelsSource(cfg Config) string {
+	if matchesFile(cfg, recommended.Embedded()) {
+		return ModelsSourceRecommended
+	}
+	return ModelsSourceLocal
+}
+
+func matchesFile(cfg Config, f recommended.File) bool {
+	for _, name := range ValidRuntimes {
+		want := f.Models(name)
+		got := ModelsFor(cfg, name)
+		for _, mode := range ValidModesFor(name) {
+			if strings.TrimSpace(got[mode]) != strings.TrimSpace(want[mode]) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validateModelID(runtime, modelID string) error {

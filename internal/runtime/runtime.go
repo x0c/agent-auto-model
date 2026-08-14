@@ -1,7 +1,7 @@
 // Package runtime 定义多 Agent runtime 的共同接口。
 package runtime
 
-import "github.com/x0c/cursor-mode-model/internal/config"
+import "github.com/x0c/agent-auto-model/internal/config"
 
 // Info 描述一个可安装的 Agent runtime。
 type Info struct {

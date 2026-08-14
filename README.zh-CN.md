@@ -1,13 +1,11 @@
 # agent-auto-model
 
-[![CI](https://github.com/x0c/cursor-mode-model/actions/workflows/test.yml/badge.svg)](https://github.com/x0c/cursor-mode-model/actions/workflows/test.yml)
+[![CI](https://github.com/x0c/agent-auto-model/actions/workflows/test.yml/badge.svg)](https://github.com/x0c/agent-auto-model/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 语言：[English](README.md) | 简体中文
 
 在 Cursor Agent CLI 或 Codex CLI 里切换 **Mode** 时，自动换对应的**模型**。装好之后照常敲 `agent` / `codex` 即可。
-
-`cursor-mode-model` 是同一套工具的兼容别名。
 
 **支持平台：** macOS · Linux · Windows
 
@@ -38,24 +36,22 @@ brew install x0c/tap/agent-auto-model
 agent-auto-model install
 ```
 
-`brew install x0c/tap/cursor-mode-model` 仍可用（别名配方）。
-
 ### macOS / Linux（一条命令）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/x0c/cursor-mode-model/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/x0c/agent-auto-model/main/install.sh | bash
 ```
 
 ### Windows（PowerShell）
 
 ```powershell
-irm https://raw.githubusercontent.com/x0c/cursor-mode-model/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/x0c/agent-auto-model/main/install.ps1 | iex
 ```
 
 ### 备用（`go install`）
 
 ```bash
-go install github.com/x0c/cursor-mode-model/cmd/agent-auto-model@latest
+go install github.com/x0c/agent-auto-model/cmd/agent-auto-model@latest
 agent-auto-model install
 ```
 
@@ -108,6 +104,12 @@ agent-auto-model config set-many cursor.plan=claude-opus-5-thinking-high codex.d
 不写前缀的 `config set plan …` 仍当成 `cursor.plan`。Codex **必须**写成 `codex.plan` / `codex.default`。
 
 模型 ID 可以用 `*` / `?`。发请求时会按当前可用模型展开，并选最新版本。
+
+改过映射后，来源会变成「本地自定义」，不再跟随仓库推荐配置。切回去：
+
+```bash
+agent-auto-model config set-models-source recommended
+```
 
 已经开着的对话要重开一次才生效。
 

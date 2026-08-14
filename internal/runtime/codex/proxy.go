@@ -12,13 +12,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/x0c/cursor-mode-model/internal/config"
-	"github.com/x0c/cursor-mode-model/internal/runtime/codex/rewrite"
-	"github.com/x0c/cursor-mode-model/internal/runtime/codex/ws"
+	"github.com/x0c/agent-auto-model/internal/config"
+	"github.com/x0c/agent-auto-model/internal/runtime/codex/rewrite"
+	"github.com/x0c/agent-auto-model/internal/runtime/codex/ws"
 )
 
 func runProxiedTUI(home, real string, args []string, locked bool) error {
-	cfg := config.Load(home)
+	cfg := config.LoadEffective(home)
 	st := rewrite.NewState(config.ModelsFor(cfg, config.RuntimeCodex), locked)
 
 	dir := os.TempDir()

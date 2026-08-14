@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/x0c/cursor-mode-model/internal/paths"
+	"github.com/x0c/agent-auto-model/internal/paths"
 )
 
 // ErrNotFound 未安装 Cursor Agent。

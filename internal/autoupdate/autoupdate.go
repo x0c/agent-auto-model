@@ -18,19 +18,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/x0c/cursor-mode-model/internal/config"
-	"github.com/x0c/cursor-mode-model/internal/install"
-	"github.com/x0c/cursor-mode-model/internal/paths"
+	"github.com/x0c/agent-auto-model/internal/config"
+	"github.com/x0c/agent-auto-model/internal/install"
+	"github.com/x0c/agent-auto-model/internal/paths"
+	"github.com/x0c/agent-auto-model/internal/recommended"
 )
 
 const (
-	defaultRepo                  = "x0c/cursor-mode-model"
+	defaultRepo                  = "x0c/agent-auto-model"
 	defaultChannel               = "github_release"
 	defaultCheckIntervalHours    = 24
 	envSkipCheck                 = "AGENT_AUTO_MODEL_SKIP_UPDATE_CHECK"
-	envSkipCheckLegacy           = "CURSOR_MODE_MODEL_SKIP_UPDATE_CHECK"
 	envLatestReleaseURL          = "AGENT_AUTO_MODEL_UPDATE_LATEST_URL"
-	envLatestReleaseURLLegacy    = "CURSOR_MODE_MODEL_UPDATE_LATEST_URL"
 	envBackgroundUpdateChild     = "AGENT_AUTO_MODEL_BACKGROUND_UPDATE_CHILD"
 	backgroundUpdatePollDuration = 5 * time.Second
 )
@@ -73,12 +72,19 @@ type latestRelease struct {
 
 // MaybeCheckAndUpdate 按间隔执行一次静默自更新。
 func MaybeCheckAndUpdate(home, currentVersion, executablePath string, force bool) error {
-	if os.Getenv(envSkipCheck) == "1" || os.Getenv(envSkipCheckLegacy) == "1" {
-		return nil
+	recErr := recommended.MaybeRefresh(home, force)
+	if recErr == nil {
+		stored := config.Load(home)
+		if stored.ModelsSource == config.ModelsSourceRecommended {
+			_ = config.SyncRuntime(home, config.ApplyRecommended(home, stored))
+		}
+	}
+	if os.Getenv(envSkipCheck) == "1" {
+		return recErr
 	}
 	cfg := config.Load(home)
 	if !cfg.AutoUpdate.Enabled {
-		return nil
+		return recErr
 	}
 	target, managed, err := managedBinary(home, executablePath)
 	if err != nil {
@@ -137,8 +143,13 @@ func MaybeCheckAndUpdate(home, currentVersion, executablePath string, force bool
 	if err != nil {
 		return saveError(home, target, err)
 	}
-	if err := replaceBinary(newBinary, target); err != nil {
+	canonical := canonicalBinaryPath(target)
+	if err := replaceBinary(newBinary, canonical); err != nil {
 		return saveError(home, target, err)
+	}
+	if canonical != target {
+		_ = os.Remove(target)
+		target = canonical
 	}
 	if _, err := install.Install(home, target, false, nil); err != nil {
 		return saveError(home, target, fmt.Errorf("更新后二次 install 失败: %w", err))
@@ -151,11 +162,7 @@ func MaybeCheckAndUpdate(home, currentVersion, executablePath string, force bool
 
 // KickoffBackgroundCheck 启动后台子进程执行自更新，不阻塞主流程。
 func KickoffBackgroundCheck(home, executablePath string) {
-	if os.Getenv(envSkipCheck) == "1" || os.Getenv(envSkipCheckLegacy) == "1" || os.Getenv(envBackgroundUpdateChild) == "1" {
-		return
-	}
-	cfg := config.Load(home)
-	if !cfg.AutoUpdate.Enabled {
+	if os.Getenv(envSkipCheck) == "1" || os.Getenv(envBackgroundUpdateChild) == "1" {
 		return
 	}
 	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
@@ -165,7 +172,6 @@ func KickoffBackgroundCheck(home, executablePath string) {
 	defer devNull.Close()
 	cmd := exec.Command(executablePath, "update", "--auto", "--quiet")
 	cmd.Env = append(os.Environ(),
-		envSkipCheck+"=1",
 		envBackgroundUpdateChild+"=1",
 	)
 	cmd.Stdout = devNull
@@ -194,9 +200,6 @@ func LoadRuntimeStatus(home string) RuntimeStatus {
 func fetchLatestRelease() (latestRelease, error) {
 	url := os.Getenv(envLatestReleaseURL)
 	if strings.TrimSpace(url) == "" {
-		url = os.Getenv(envLatestReleaseURLLegacy)
-	}
-	if strings.TrimSpace(url) == "" {
 		url = fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", defaultRepo)
 	}
 	resp, err := httpClient.Get(url)
@@ -220,19 +223,18 @@ func fetchLatestRelease() (latestRelease, error) {
 func selectAsset(rel latestRelease) (string, string, error) {
 	version := strings.TrimPrefix(strings.TrimSpace(rel.TagName), "v")
 	ext := ".tar.gz"
-	allowAnyURL := strings.TrimSpace(os.Getenv(envLatestReleaseURL)) != "" || strings.TrimSpace(os.Getenv(envLatestReleaseURLLegacy)) != ""
+	allowAnyURL := strings.TrimSpace(os.Getenv(envLatestReleaseURL)) != ""
 	if runtime.GOOS == "windows" {
 		ext = ".zip"
 	}
 	suffix := fmt.Sprintf("_%s_%s_%s%s", version, runtime.GOOS, goArchName(runtime.GOARCH), ext)
-	wantNew := "agent-auto-model" + suffix
-	wantOld := "cursor-mode-model" + suffix
+	want := "agent-auto-model" + suffix
 	for _, asset := range rel.Assets {
-		if (asset.Name == wantNew || asset.Name == wantOld) && (allowAnyURL || strings.HasPrefix(asset.URL, "https://github.com/")) {
+		if asset.Name == want && (allowAnyURL || strings.HasPrefix(asset.URL, "https://github.com/")) {
 			return asset.URL, asset.Name, nil
 		}
 	}
-	return "", "", fmt.Errorf("未找到当前平台更新包 %s", wantNew)
+	return "", "", fmt.Errorf("未找到当前平台更新包 %s", want)
 }
 
 func goArchName(goarch string) string {
@@ -350,11 +352,24 @@ func extractZipBinary(archivePath, tmpDir string) (string, error) {
 
 func isOurBinaryName(name string) bool {
 	switch name {
-	case "agent-auto-model", "agent-auto-model.exe", "cursor-mode-model", "cursor-mode-model.exe":
+	case "agent-auto-model", "agent-auto-model.exe":
 		return true
 	default:
 		return false
 	}
+}
+
+func canonicalBinaryPath(target string) string {
+	base := filepath.Base(target)
+	leftover := paths.LeftoverCommandName()
+	if base != leftover && base != leftover+".exe" {
+		return target
+	}
+	name := paths.AppName
+	if strings.HasSuffix(base, ".exe") {
+		name += ".exe"
+	}
+	return filepath.Join(filepath.Dir(target), name)
 }
 
 func replaceBinary(src, target string) error {

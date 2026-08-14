@@ -3,11 +3,11 @@ package main
 import (
 	"os"
 
-	"github.com/x0c/cursor-mode-model/internal/app"
+	"github.com/x0c/agent-auto-model/internal/app"
 )
 
 // 由 -ldflags 注入。
-var version = "1.0.1"
+var version = "2.0.0"
 
 func main() {
 	if version != "" {

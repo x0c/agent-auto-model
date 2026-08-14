@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/x0c/cursor-mode-model/internal/config"
+	"github.com/x0c/agent-auto-model/internal/config"
 )
 
 // Exec 拦截交互式 TUI：经 app-server 代理按 Mode 改写模型；其它子命令原样转调。
@@ -17,7 +17,7 @@ func Exec(home string, args []string) error {
 	if config.GloballyDisabled() {
 		return runReal(real, args)
 	}
-	cfg := config.Load(home)
+	cfg := config.LoadEffective(home)
 	if !config.RuntimeEnabled(cfg, config.RuntimeCodex) {
 		return runReal(real, args)
 	}

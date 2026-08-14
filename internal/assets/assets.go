@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/x0c/cursor-mode-model/internal/config"
-	"github.com/x0c/cursor-mode-model/internal/paths"
+	"github.com/x0c/agent-auto-model/internal/config"
+	"github.com/x0c/agent-auto-model/internal/paths"
 )
 
 //go:embed register.mjs
@@ -31,7 +31,7 @@ func Ensure(home string) (registerPath string, err error) {
 	}
 	runtimeCfg := paths.RuntimeConfigFile(home)
 	if _, err := os.Stat(runtimeCfg); err != nil {
-		if err := config.SyncRuntime(home, config.Load(home)); err != nil {
+		if err := config.SyncRuntime(home, config.LoadEffective(home)); err != nil {
 			return "", err
 		}
 	}

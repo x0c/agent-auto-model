@@ -10,10 +10,11 @@ import (
 	stdruntime "runtime"
 	"strings"
 
-	"github.com/x0c/cursor-mode-model/internal/assets"
-	"github.com/x0c/cursor-mode-model/internal/config"
-	"github.com/x0c/cursor-mode-model/internal/paths"
-	aamruntime "github.com/x0c/cursor-mode-model/internal/runtime"
+	"github.com/x0c/agent-auto-model/internal/assets"
+	"github.com/x0c/agent-auto-model/internal/config"
+	"github.com/x0c/agent-auto-model/internal/paths"
+	"github.com/x0c/agent-auto-model/internal/recommended"
+	aamruntime "github.com/x0c/agent-auto-model/internal/runtime"
 )
 
 // State 记录本工具自身二进制位置，供包装脚本调用。
@@ -61,6 +62,10 @@ func Install(home, selfBinary string, dryRun bool, runtimeNames []string) (Resul
 	if err := config.Save(home, cfg); err != nil {
 		return res, err
 	}
+	recommended.RefreshAtInstall(home)
+	if err := config.SyncRuntime(home, config.LoadEffective(home)); err != nil {
+		return res, err
+	}
 	register, err := assets.Ensure(home)
 	if err != nil {
 		return res, err
@@ -79,6 +84,7 @@ func Install(home, selfBinary string, dryRun bool, runtimeNames []string) (Resul
 	if err := ensurePath(home); err != nil {
 		return res, err
 	}
+	removeLeftoverCommands(home)
 	res.Status = "ok"
 	return res, nil
 }
@@ -118,13 +124,14 @@ func Uninstall(home string, dryRun bool, runtimeNames []string) (Result, error) 
 	for _, name := range wrapperNames(infos) {
 		_ = os.Remove(filepath.Join(dir, name))
 	}
-	legacyDir := filepath.Join(paths.LegacyDataDir(home), "bin")
+	legacyDir := filepath.Join(paths.LeftoverDataDir(home), "bin")
 	for _, name := range wrapperNames(infos) {
 		_ = os.Remove(filepath.Join(legacyDir, name))
 	}
 	if len(runtimeNames) == 0 || !wrappersRemaining(home) {
 		_ = removePath(home)
 	}
+	removeLeftoverCommands(home)
 	st := State{Enabled: cfg.Enabled}
 	if prev, err := readState(home); err == nil {
 		st.SelfBinary = prev.SelfBinary
@@ -144,6 +151,13 @@ func selectedRuntimes(names []string) ([]aamruntime.Info, error) {
 		}
 	}
 	return aamruntime.Filter(names), nil
+}
+
+func removeLeftoverCommands(home string) {
+	dir := paths.LocalBinDir(home)
+	name := paths.LeftoverCommandName()
+	_ = os.Remove(filepath.Join(dir, name))
+	_ = os.Remove(filepath.Join(dir, name+".exe"))
 }
 
 func wrappersRemaining(home string) bool {
@@ -328,8 +342,8 @@ func runPowerShellPathMutate(dir string, remove bool) error {
 	// 用 PowerShell 改用户 PATH，避免 setx 截断。
 	script := `
 $ErrorActionPreference = 'Stop'
-$dir = $env:CMM_PATH_DIR
-$remove = $env:CMM_PATH_REMOVE -eq '1'
+$dir = $env:AAM_PATH_DIR
+$remove = $env:AAM_PATH_REMOVE -eq '1'
 $trim = [char[]]'\/'
 $normalized = $dir.TrimEnd($trim)
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -346,8 +360,8 @@ $newPath = ($filtered -join ';')
 `
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script)
 	cmd.Env = append(os.Environ(),
-		"CMM_PATH_DIR="+dir,
-		fmt.Sprintf("CMM_PATH_REMOVE=%d", boolTo01(remove)),
+		"AAM_PATH_DIR="+dir,
+		fmt.Sprintf("AAM_PATH_REMOVE=%d", boolTo01(remove)),
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

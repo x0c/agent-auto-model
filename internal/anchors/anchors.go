@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/x0c/cursor-mode-model/internal/agentbin"
-	"github.com/x0c/cursor-mode-model/internal/assets"
+	"github.com/x0c/agent-auto-model/internal/agentbin"
+	"github.com/x0c/agent-auto-model/internal/assets"
 )
 
 // Result 锚点扫描结果。

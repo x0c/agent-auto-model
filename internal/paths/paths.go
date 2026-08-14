@@ -7,23 +7,28 @@ import (
 )
 
 const (
-	AppName    = "agent-auto-model"
-	LegacyName = "cursor-mode-model"
+	AppName = "agent-auto-model"
 
 	EnvDisable = "AGENT_AUTO_MODEL"
 	EnvConfig  = "AGENT_AUTO_MODEL_CONFIG"
 	EnvLock    = "AGENT_AUTO_MODEL_LOCK"
 	EnvHome    = "AGENT_AUTO_MODEL_HOME"
 
-	LegacyEnvDisable = "CURSOR_MODE_MODEL"
-	LegacyEnvConfig  = "CURSOR_MODE_MODEL_CONFIG"
-	LegacyEnvLock    = "CURSOR_MODE_MODEL_LOCK"
-	LegacyEnvHome    = "CURSOR_MODE_MODEL_HOME"
+	EnvRecommendedURL       = "AGENT_AUTO_MODEL_RECOMMENDED_URL"
+	EnvSkipRecommendedCheck = "AGENT_AUTO_MODEL_SKIP_RECOMMENDED_CHECK"
 )
+
+// 旧产品名只用于清掉本机残留，不再作为对外别名。
+const leftoverName = "cursor-mode-model"
+
+// LeftoverCommandName 返回本机可能残留的旧命令名。
+func LeftoverCommandName() string {
+	return leftoverName
+}
 
 // Home 返回用户主目录，可被测试注入。
 func Home() string {
-	if h := firstNonEmpty(os.Getenv(EnvHome), os.Getenv(LegacyEnvHome)); h != "" {
+	if h := os.Getenv(EnvHome); h != "" {
 		return h
 	}
 	h, err := os.UserHomeDir()
@@ -40,11 +45,11 @@ func ConfigDir(home string) string {
 	return filepath.Join(home, ".config", AppName)
 }
 
-func LegacyConfigDir(home string) string {
+func leftoverConfigDir(home string) string {
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, LegacyName)
+		return filepath.Join(xdg, leftoverName)
 	}
-	return filepath.Join(home, ".config", LegacyName)
+	return filepath.Join(home, ".config", leftoverName)
 }
 
 func DataDir(home string) string {
@@ -54,19 +59,19 @@ func DataDir(home string) string {
 	return filepath.Join(home, ".local", "share", AppName)
 }
 
-func LegacyDataDir(home string) string {
+func LeftoverDataDir(home string) string {
 	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
-		return filepath.Join(xdg, LegacyName)
+		return filepath.Join(xdg, leftoverName)
 	}
-	return filepath.Join(home, ".local", "share", LegacyName)
+	return filepath.Join(home, ".local", "share", leftoverName)
 }
 
 func UserConfigFile(home string) string {
 	return filepath.Join(ConfigDir(home), "config.json")
 }
 
-func LegacyUserConfigFile(home string) string {
-	return filepath.Join(LegacyConfigDir(home), "config.json")
+func LeftoverUserConfigFile(home string) string {
+	return filepath.Join(leftoverConfigDir(home), "config.json")
 }
 
 func AssetsDir(home string) string {
@@ -95,6 +100,14 @@ func AutoUpdateStateFile(home string) string {
 
 func AutoUpdateLockFile(home string) string {
 	return filepath.Join(DataDir(home), "autoupdate.lock")
+}
+
+func RecommendedCacheFile(home string) string {
+	return filepath.Join(DataDir(home), "recommended.json")
+}
+
+func RecommendedLockFile(home string) string {
+	return filepath.Join(DataDir(home), "recommended.lock")
 }
 
 func DecisionsLog(home string) string {
@@ -127,17 +140,4 @@ func CursorAgentVersionsDir(home string) string {
 
 func LocalBinDir(home string) string {
 	return filepath.Join(home, ".local", "bin")
-}
-
-func EnvOrLegacy(primary, legacy string) string {
-	return firstNonEmpty(os.Getenv(primary), os.Getenv(legacy))
-}
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }

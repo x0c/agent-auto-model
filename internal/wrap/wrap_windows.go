@@ -7,7 +7,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/x0c/cursor-mode-model/internal/agentbin"
+	"github.com/x0c/agent-auto-model/internal/agentbin"
 )
 
 // Exec 解析官方 agent，注入环境后运行（Windows 无进程替换）。

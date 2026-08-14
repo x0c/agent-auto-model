@@ -190,3 +190,127 @@ func TestSetRuntimeModel(t *testing.T) {
 		t.Fatalf("%#v", cfg.Runtimes[RuntimeCodex].Models)
 	}
 }
+
+func TestDefaultModelsSourceIsRecommended(t *testing.T) {
+	if Default().ModelsSource != ModelsSourceRecommended {
+		t.Fatalf("%s", Default().ModelsSource)
+	}
+}
+
+func TestInferOldDefaultAsRecommended(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+	cfg := Default()
+	cfg.ModelsSource = ""
+	if err := Save(home, cfg); err != nil {
+		t.Fatal(err)
+	}
+	// 去掉来源字段，模拟升级前的配置。
+	path := filepath.Join(home, ".config", "agent-auto-model", "config.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Replace(string(raw), `"models_source": "recommended",`, "", 1)
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := Load(home)
+	if got.ModelsSource != ModelsSourceRecommended {
+		t.Fatalf("与内置推荐一致时应判为推荐配置: %s", got.ModelsSource)
+	}
+}
+
+func TestInferCustomAsLocal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+	cfg := Default()
+	cfg.ModelsSource = ""
+	rt := cfg.Runtimes[RuntimeCursor]
+	rt.Models["plan"] = "my-opus"
+	cfg.Runtimes[RuntimeCursor] = rt
+	cfg.Models["plan"] = "my-opus"
+	if err := Save(home, cfg); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".config", "agent-auto-model", "config.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.ReplaceAll(string(raw), `"models_source": "recommended",`, "")
+	body = strings.ReplaceAll(body, `"models_source": "local",`, "")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := Load(home)
+	if got.ModelsSource != ModelsSourceLocal {
+		t.Fatalf("改过映射应判为本地自定义: %s plan=%s", got.ModelsSource, got.Runtimes[RuntimeCursor].Models["plan"])
+	}
+}
+
+func TestSetSwitchesRecommendedToLocal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+	if err := Save(home, Default()); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := SetRuntimeModel(home, RuntimeCursor, "plan", "claude-opus-5-thinking-high")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ModelsSource != ModelsSourceLocal {
+		t.Fatalf("改映射后应切成本地自定义: %s", cfg.ModelsSource)
+	}
+}
+
+func TestSetModelsSourceRoundTrip(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+	if _, err := SetRuntimeModel(home, RuntimeCursor, "plan", "custom-plan-model"); err != nil {
+		t.Fatal(err)
+	}
+	if Load(home).ModelsSource != ModelsSourceLocal {
+		t.Fatal("应已是本地自定义")
+	}
+	cfg, err := SetModelsSource(home, ModelsSourceRecommended)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ModelsSource != ModelsSourceRecommended {
+		t.Fatal(cfg.ModelsSource)
+	}
+	if cfg.Runtimes[RuntimeCursor].Models["plan"] != DefaultCursorModels["plan"] {
+		t.Fatalf("切回推荐后生效映射应是推荐: %s", cfg.Runtimes[RuntimeCursor].Models["plan"])
+	}
+	cfg, err = SetModelsSource(home, ModelsSourceLocal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ModelsSource != ModelsSourceLocal {
+		t.Fatal(cfg.ModelsSource)
+	}
+	if cfg.Runtimes[RuntimeCursor].Models["plan"] != DefaultCursorModels["plan"] {
+		t.Fatalf("切到本地时应拍下当时的推荐: %s", cfg.Runtimes[RuntimeCursor].Models["plan"])
+	}
+}
+
+func TestLoadEffectiveUsesRecommended(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+	cfg := Default()
+	cfg.Runtimes[RuntimeCursor].Models["plan"] = "stale-local"
+	cfg.Models["plan"] = "stale-local"
+	if err := Save(home, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got := LoadEffective(home)
+	if got.Runtimes[RuntimeCursor].Models["plan"] != DefaultCursorModels["plan"] {
+		t.Fatalf("推荐来源应覆盖本地快照: %s", got.Runtimes[RuntimeCursor].Models["plan"])
+	}
+}

@@ -10,7 +10,7 @@
 
 ## 机制定位
 
-用户装好后，Cursor Agent CLI / Codex CLI 按 Mode 自动换模型。映射和总开关写在用户配置里，用 `agent-auto-model config …` 改；`cursor-mode-model` 是过渡别名，命令相同。
+用户装好后，Cursor Agent CLI / Codex CLI 按 Mode 自动换模型。映射和总开关写在用户配置里，用 `agent-auto-model config …` 改。
 
 ## 默认映射
 
@@ -26,6 +26,8 @@ Cursor 可配键：`plan` / `default` / `search` / `debug`。别名：`ask` → 
 Codex 可配键：`plan` / `default`。取值是 `模型[:力度]`，例如 `gpt-5.6-sol:high`。
 
 未写 runtime 前缀的 `config set plan …` 视为 `cursor.plan`（旧写法，Codex 必须带 `codex.`）。
+
+默认 **模型映射来源** 是「推荐配置」：装完即用，并自动跟随 GitHub 仓库里的 `recommended-models.json`。自己改过映射的人升级后会判成「本地自定义」，不会被远程覆盖。
 
 ## 核心入口：回答用户时直接贴这些命令
 
@@ -74,7 +76,7 @@ agent-auto-model config enable --runtime cursor
 
 `config disable` 与 `uninstall` 不同：前者关开关、映射还在；后者移除 PATH 包装，官方 CLI 不再被拦截。
 
-环境变量总开关（当前进程）：`AGENT_AUTO_MODEL=0`（兼容 `CURSOR_MODE_MODEL=0`）。
+环境变量总开关（当前进程）：`AGENT_AUTO_MODEL=0`。
 
 ### 只锁这一次会话（不改默认）
 
@@ -95,6 +97,7 @@ codex -m <model-id> …
 agent-auto-model config set-strict true|false          # Cursor：纠正失败则阻断发送
 agent-auto-model config set-auto-update true|false
 agent-auto-model config set-update-interval <hours>
+agent-auto-model config set-models-source recommended|local
 agent-auto-model config reset                          # 恢复出厂映射与开关
 agent-auto-model uninstall                             # 卸包装
 ```
@@ -108,7 +111,8 @@ agent-auto-model uninstall                             # 卸包装
 - 【隐性依赖】改映射 / 开关 / 安装之后，已经开着的 Agent 会话必须重启才生效。
 - 【消歧】`config disable` = 关自动切换；`uninstall` = 拿掉包装。不要把「关掉」说成卸载。
 - 【消歧】`--model` 锁的是**这一次会话**，不改默认映射。改默认只能用 `config set`。
-- 【叫法统一】产品名 `agent-auto-model`；`cursor-mode-model` 是过渡别名。
+- 【消歧】`config set` 会把映射来源切成本地自定义；跟随仓库推荐要用 `config set-models-source recommended`。
+- 【叫法统一】产品名 `agent-auto-model`。
 - 【隐式语义】总开关 `enabled=false` 时，单个 runtime 即使仍是 enabled 也不再切换（`RuntimeEnabled` 要求两层都开）。
 
 ## 验证路径

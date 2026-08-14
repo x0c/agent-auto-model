@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/x0c/cursor-mode-model/internal/paths"
+	"github.com/x0c/agent-auto-model/internal/paths"
 )
 
 func TestStripPathBlock(t *testing.T) {

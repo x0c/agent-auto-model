@@ -13,7 +13,6 @@ import (
 func TestConfigCLI(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("AGENT_AUTO_MODEL_HOME", home)
-	t.Setenv("CURSOR_MODE_MODEL_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 	t.Setenv("AGENT_AUTO_MODEL_SKIP_UPDATE_CHECK", "1")
@@ -83,6 +82,24 @@ func TestConfigCLI(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("reset exit=%d", code)
 	}
+
+	code = captureExit(t, func() int {
+		return Run([]string{"agent-auto-model", "config", "set-models-source", "recommended", "--json"})
+	})
+	if code != 0 {
+		t.Fatalf("set-models-source exit=%d", code)
+	}
+	out = captureStdout(t, func() {
+		if c := Run([]string{"agent-auto-model", "config", "set", "plan", "custom-cli-model", "--json"}); c != 0 {
+			t.Fatalf("set after recommended exit=%d", c)
+		}
+	})
+	if !strings.Contains(out, `"models_source_switched":true`) {
+		t.Fatalf("改映射应切换来源: %s", out)
+	}
+	if !strings.Contains(out, `"models_source":"local"`) {
+		t.Fatalf("应切成本地自定义: %s", out)
+	}
 }
 
 func TestUsageMentionsConfig(t *testing.T) {
@@ -95,12 +112,17 @@ func TestUsageMentionsConfig(t *testing.T) {
 	if !strings.Contains(errOut, "codex.plan") {
 		t.Fatalf("usage 缺少 codex.plan: %s", errOut)
 	}
+	if !strings.Contains(errOut, "set-models-source") {
+		t.Fatalf("usage 缺少 set-models-source: %s", errOut)
+	}
+	if !strings.Contains(errOut, "refresh-recommended") {
+		t.Fatalf("usage 缺少 refresh-recommended: %s", errOut)
+	}
 }
 
 func TestStatusRuntimeFilterAndDisable(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("AGENT_AUTO_MODEL_HOME", home)
-	t.Setenv("CURSOR_MODE_MODEL_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 	t.Setenv("AGENT_AUTO_MODEL_SKIP_UPDATE_CHECK", "1")

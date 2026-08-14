@@ -35,8 +35,8 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 - [cli/docs/MAINTAINER_GUIDE.md](cli/docs/MAINTAINER_GUIDE.md)：Cursor 挂钩、Codex 代理、PATH 包装、自更新、双远端发版、锚点漂移。
 - [cli/AGENTS.md](cli/AGENTS.md)：改、评审或发布本 CLI（验证命令、Remote、交付闭环）。
 - [cli/README.zh-CN.md](cli/README.zh-CN.md) / [cli/README.md](cli/README.md)：对外安装与用法（改映射、关闭自动切换、会话锁定）。
-- 公开仓库：`https://github.com/x0c/cursor-mode-model`
-- Forgejo 备份：`ssh://git@10.10.10.2:2222/Max/cursor-mode-model.git`
+- 公开仓库：`https://github.com/x0c/agent-auto-model`
+- Forgejo 备份：`ssh://git@10.10.10.2:2222/Max/agent-auto-model.git`
 
 ## 组件一览
 
@@ -69,17 +69,18 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 - Codex 内层：进程内 UDS WebSocket 代理，上游 `codex app-server --stdio`，TUI 以 `codex --remote unix://<临时 sock>` 连接；改写 `turn/start` / `thread/settings/update` 的 `model`+`effort`（及 `collaborationMode.settings`）。JSON-RPC 字段集中在 `internal/runtime/codex/rewrite`。
 - 配置 v2：`runtimes.cursor` / `runtimes.codex`；v1 扁平 `models` 读入时视为 Cursor 映射。
 - 显式 `--model`：Cursor 本会话不自动切换（包装只认 `--model` / `--model=`）。Codex 还认 `-m` / `-m=`。
-- 总开关：`AGENT_AUTO_MODEL=0`（兼容 `CURSOR_MODE_MODEL=0`）或 `config disable`。
+- 总开关：`AGENT_AUTO_MODEL=0` 或 `config disable`。
 - Cursor 锚点漂移 / Codex 代理失败：故障开放。
-- 二进制名：`agent-auto-model`；`cursor-mode-model` 为过渡别名。Go module 仍为 `github.com/x0c/cursor-mode-model`（与公开 GitHub 仓库一致，保证 `go install`）。
-- 配置/数据目录：`~/.config/agent-auto-model`、`~/.local/share/agent-auto-model`；读配置时回退旧 `cursor-mode-model` 路径。
+- 二进制名：`agent-auto-model`。Go module：`github.com/x0c/agent-auto-model`。
+- 配置/数据目录：`~/.config/agent-auto-model`、`~/.local/share/agent-auto-model`。安装时若发现旧配置目录会一次性迁走，并清掉本机残留的旧命令名。
+- 默认跟随仓库推荐映射；`config set` 后切成本地自定义。切回：`config set-models-source recommended`。
 
 ## Remote
 
 | 名称 | URL | 用途 |
 |---|---|---|
-| `origin` | `ssh://git@10.10.10.2:2222/Max/cursor-mode-model.git` | Forgejo 备份 |
-| `github` | `git@github.com:x0c/cursor-mode-model.git` | 公开协作 / Release / Homebrew 源 |
+| `origin` | `ssh://git@10.10.10.2:2222/Max/agent-auto-model.git` | Forgejo 备份 |
+| `github` | `git@github.com:x0c/agent-auto-model.git` | 公开协作 / Release / Homebrew 源 |
 
 ## 发版要求
 
@@ -94,7 +95,7 @@ git push github main --tags
 bash scripts/publish-release.sh vX.Y.Z
 ```
 
-公开安装渠道：Homebrew `x0c/tap/agent-auto-model`（`x0c/tap/cursor-mode-model` 为别名配方）、`install.sh`、`install.ps1`、`go install`。  
+公开安装渠道：Homebrew `x0c/tap/agent-auto-model`、`install.sh`、`install.ps1`、`go install`。  
 CI 的 `release.yml` 只补其它平台包与配方兜底，**不得**作为唯一升级通路。
 
 用户侧升级：
@@ -102,7 +103,7 @@ CI 的 `release.yml` 只补其它平台包与配方兜底，**不得**作为唯�
 ```bash
 brew upgrade x0c/tap/agent-auto-model && agent-auto-model install
 # 或
-curl -fsSL https://raw.githubusercontent.com/x0c/cursor-mode-model/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/x0c/agent-auto-model/main/install.sh | bash
 ```
 
 ## 验证要求
@@ -111,7 +112,6 @@ curl -fsSL https://raw.githubusercontent.com/x0c/cursor-mode-model/main/install.
 go test ./...
 node --test internal/assets/register.test.mjs
 go build -ldflags "-X main.version=$(tr -d '[:space:]' < VERSION)" -o /tmp/agent-auto-model ./cmd/agent-auto-model
-go build -ldflags "-X main.version=$(tr -d '[:space:]' < VERSION)" -o /tmp/cursor-mode-model ./cmd/cursor-mode-model
 ```
 
 ## 领域地图（doc-init）
@@ -120,7 +120,8 @@ go build -ldflags "-X main.version=$(tr -d '[:space:]' < VERSION)" -o /tmp/curso
 
 | 领域 | 入口锚点 |
 |------|---------|
-| 命令面与 Mode 映射 | internal/app/ · internal/config/ · cmd/agent-auto-model/ · cmd/cursor-mode-model/ · internal/status/ |
+| 命令面与 Mode 映射 | internal/app/ · internal/config/ · cmd/agent-auto-model/ · internal/status/ |
+| 仓库推荐映射 | internal/recommended/ · recommended-models.json |
 | Cursor 挂钩 | internal/assets/ · internal/anchors/ |
 | Codex 代理 | internal/runtime/ · internal/runtime/codex/ |
 | 安装与 PATH 包装 | internal/install/ · internal/wrap/ · internal/agentbin/ · internal/paths/ |

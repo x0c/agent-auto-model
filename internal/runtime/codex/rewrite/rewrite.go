@@ -8,13 +8,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/x0c/cursor-mode-model/internal/runtime/codex/spec"
+	"github.com/x0c/agent-auto-model/internal/runtime/codex/spec"
 )
 
 const (
-	MethodInitialize          = "initialize"
-	MethodThreadStart         = "thread/start"
-	MethodThreadResume        = "thread/resume"
+	MethodInitialize           = "initialize"
+	MethodThreadStart          = "thread/start"
+	MethodThreadResume         = "thread/resume"
 	MethodThreadSettingsUpdate = "thread/settings/update"
 	MethodTurnStart            = "turn/start"
 )

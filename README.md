@@ -1,13 +1,11 @@
 # agent-auto-model
 
-[![CI](https://github.com/x0c/cursor-mode-model/actions/workflows/test.yml/badge.svg)](https://github.com/x0c/cursor-mode-model/actions/workflows/test.yml)
+[![CI](https://github.com/x0c/agent-auto-model/actions/workflows/test.yml/badge.svg)](https://github.com/x0c/agent-auto-model/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Languages: English | [简体中文](README.zh-CN.md)
 
 When you switch **Mode** in Cursor Agent CLI or Codex CLI, this tool switches the **model** for you. After install, keep using `agent` / `codex` as usual.
-
-`cursor-mode-model` is a compatibility alias for the same binary.
 
 **Supported platforms:** macOS · Linux · Windows
 
@@ -38,24 +36,22 @@ brew install x0c/tap/agent-auto-model
 agent-auto-model install
 ```
 
-`brew install x0c/tap/cursor-mode-model` still works (alias formula).
-
 ### macOS / Linux (one-liner)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/x0c/cursor-mode-model/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/x0c/agent-auto-model/main/install.sh | bash
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-irm https://raw.githubusercontent.com/x0c/cursor-mode-model/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/x0c/agent-auto-model/main/install.ps1 | iex
 ```
 
 ### Fallback (`go install`)
 
 ```bash
-go install github.com/x0c/cursor-mode-model/cmd/agent-auto-model@latest
+go install github.com/x0c/agent-auto-model/cmd/agent-auto-model@latest
 agent-auto-model install
 ```
 
@@ -108,6 +104,12 @@ agent-auto-model config set-many cursor.plan=claude-opus-5-thinking-high codex.d
 `config set plan …` (no prefix) still means `cursor.plan`. Codex **must** use `codex.plan` / `codex.default`.
 
 Model ids may include `*` / `?`. At request time the tool expands them against currently available models and picks the latest version.
+
+Changing a mapping switches you to a local copy that no longer follows the repo defaults. To follow them again:
+
+```bash
+agent-auto-model config set-models-source recommended
+```
 
 Restart any session that was already open.
 

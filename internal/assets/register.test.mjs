@@ -4,11 +4,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-process.env.CURSOR_MODE_MODEL_UNIT_TEST = '1';
+process.env.AGENT_AUTO_MODEL_UNIT_TEST = '1';
 delete process.env.AGENT_AUTO_MODEL_CONFIG;
-delete process.env.CURSOR_MODE_MODEL_CONFIG;
 delete process.env.AGENT_AUTO_MODEL;
-delete process.env.CURSOR_MODE_MODEL;
 
 const {
   currentMode,

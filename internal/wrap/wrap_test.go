@@ -6,18 +6,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/x0c/cursor-mode-model/internal/config"
-	"github.com/x0c/cursor-mode-model/internal/paths"
+	"github.com/x0c/agent-auto-model/internal/config"
+	"github.com/x0c/agent-auto-model/internal/paths"
 )
 
 func TestPrepareEnvInjectsImport(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("AGENT_AUTO_MODEL_HOME", home)
-	t.Setenv("CURSOR_MODE_MODEL_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 	_ = os.Unsetenv("AGENT_AUTO_MODEL")
-	_ = os.Unsetenv("CURSOR_MODE_MODEL")
 	_ = os.Unsetenv("NODE_OPTIONS")
 
 	if err := config.Save(home, config.Default()); err != nil {
@@ -41,7 +39,6 @@ func TestPrepareEnvInjectsImport(t *testing.T) {
 func TestPrepareEnvDisabled(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("AGENT_AUTO_MODEL", "0")
-	t.Setenv("CURSOR_MODE_MODEL", "0")
 	env, err := PrepareEnv(home, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -54,11 +51,9 @@ func TestPrepareEnvDisabled(t *testing.T) {
 func TestPrepareEnvLocksOnExplicitModel(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("AGENT_AUTO_MODEL_HOME", home)
-	t.Setenv("CURSOR_MODE_MODEL_HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 	_ = os.Unsetenv("AGENT_AUTO_MODEL")
-	_ = os.Unsetenv("CURSOR_MODE_MODEL")
 	if err := config.Save(home, config.Default()); err != nil {
 		t.Fatal(err)
 	}
