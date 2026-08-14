@@ -2,7 +2,7 @@
 
 ## 文档定位
 
-覆盖本工具的**用户命令**：查看状态、改 Mode→模型映射、推荐配置 vs 本地自定义、开关自动切换、会话锁定、卸载。
+覆盖本工具的**用户命令**：查看状态、改 Mode→模型映射、推荐配置 vs 本地自定义、推荐表通配符默认、开关自动切换、会话锁定、卸载。
 
 对外 [README.md](../README.md) / [README.zh-CN.md](../README.zh-CN.md) 的 **Usage / 用法** 节必须能让陌生人照着敲；本文与 README 命令清单保持一致，并多写 Agent 约束（禁止只答「支持」、禁止为回答用法翻源码）。
 
@@ -125,8 +125,8 @@ agent-auto-model uninstall                             # 卸包装
 - **AI 易错点** 【禁止】为了回答上述用法去读 `internal/app` / `internal/config`。本文与 `config show` 已足够。
 - 【隐性依赖】改映射 / 开关 / 安装之后，已经开着的 Agent 会话必须重启才生效。
 - 【消歧】`config disable` = 关自动切换；`uninstall` = 拿掉包装。不要把「关掉」说成卸载。
-- 【消歧】`--model` 锁的是**这一次会话**，不改默认映射。改默认只能用 `config set`。
-- 【消歧】`config set` 会把映射来源切成本地自定义；跟随仓库推荐要用 `config set-models-source recommended`。
+- 【消歧】`--model` 锁的是**这一次会话**，不改默认映射；会话锁定可以用具体版本号。改默认只能用 `config set`。推荐表 / 出厂默认必须用通配符，禁止钉死 Opus / Sol / Terra / Grok 的版本号。
+- 【消歧】`config set` 会把映射来源切成本地自定义；跟随仓库推荐要用 `config set-models-source recommended`。来源是整表两态，不做「改过的键保留、没改的继续跟随」。
 - 【叫法统一】产品名 `agent-auto-model`。
 - 【隐式语义】总开关 `enabled=false` 时，单个 runtime 即使仍是 enabled 也不再切换（`RuntimeEnabled` 要求两层都开）。
 

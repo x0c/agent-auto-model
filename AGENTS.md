@@ -16,6 +16,10 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 2. **直接给出完整可复制命令**，禁止只答「支持」。
 3. 本项目就是命令行工具，用法问答必须贴命令；全局「面向用户不要抛命令参数」**不适用于本项目的用法问答**。
 
+## 问「两边是不是最新 / 能不能跑」（强制）
+
+用户问本机和开发机是否最新、执行有没有问题时：两边都查，禁止只看本机版本号。核对目录名、git HEAD 与 origin/main、git remote URL、已装命令版本、`status` 里包装路径是新目录且包装生效。口径见 [cli/docs/MAINTAINER_GUIDE.md](cli/docs/MAINTAINER_GUIDE.md)「包装与 PATH」「双机对齐」。
+
 ## 交付闭环（强制）
 
 改完 Bug / 加完功能后，**自测通过即立刻发版**，不要等用户再说「发布一下」：
@@ -31,8 +35,8 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 
 > 以下文档在涉及对应领域的开发、评审、排查或回答用户用法时先读取。
 
-- [cli/docs/CLI_USAGE_GUIDE.md](cli/docs/CLI_USAGE_GUIDE.md)：怎么用、改 Mode→模型映射、推荐配置 vs 本地自定义、一键关闭/打开自动切换、会话锁定、`config` 子命令。
-- [cli/docs/MAINTAINER_GUIDE.md](cli/docs/MAINTAINER_GUIDE.md)：Cursor 挂钩、Codex 代理、PATH 包装、自更新、双远端发版、锚点漂移、推荐模型配置。
+- [cli/docs/CLI_USAGE_GUIDE.md](cli/docs/CLI_USAGE_GUIDE.md)：怎么用、改 Mode→模型映射、推荐配置 vs 本地自定义、推荐表通配符默认、一键关闭/打开自动切换、会话锁定、`config` 子命令。
+- [cli/docs/MAINTAINER_GUIDE.md](cli/docs/MAINTAINER_GUIDE.md)：Cursor 挂钩、Codex 代理、PATH 包装未生效 / 旧入口残留、双机是否最新、自更新、双远端发版、锚点漂移、改/评审推荐模型配置与通配符默认值。
 - [cli/AGENTS.md](cli/AGENTS.md)：改、评审或发布本 CLI（验证命令、Remote、交付闭环）。
 - [cli/README.zh-CN.md](cli/README.zh-CN.md) / [cli/README.md](cli/README.md)：对外安装与用法（改映射、跟随推荐、关闭自动切换、会话锁定）。
 - 公开仓库：`https://github.com/x0c/agent-auto-model`
@@ -56,9 +60,9 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 
 > 以下文档在涉及对应领域的开发、评审、排查或回答用户用法时先读取。
 
-- `docs/CLI_USAGE_GUIDE.md`：怎么用、改 Mode→模型映射、推荐配置 vs 本地自定义、一键关闭/打开自动切换、会话锁定、`config` 子命令
+- `docs/CLI_USAGE_GUIDE.md`：怎么用、改 Mode→模型映射、推荐配置 vs 本地自定义、推荐表通配符默认、一键关闭/打开自动切换、会话锁定、`config` 子命令
 - `README.md` / `README.zh-CN.md`：对外安装与用法（改映射、跟随推荐、关闭自动切换、会话锁定）；与 CLI_USAGE_GUIDE 命令清单对齐
-- `docs/MAINTAINER_GUIDE.md`：Cursor 挂钩、Codex 代理、PATH 包装、Ubuntu login PATH、Grok fast、锚点漂移、自更新、双远端发版
+- `docs/MAINTAINER_GUIDE.md`：Cursor 挂钩、Codex 代理、PATH 包装、Ubuntu login PATH、Grok fast、锚点漂移、自更新、双远端发版、改/评审推荐表与通配符默认值
 - `scripts/publish-release.sh`：本机发版收尾（Release 附件 + Homebrew 配方，防回退）
 - `scripts/bump-homebrew-formula.py`：配方 url/sha256 写入与版本回退防护
 
@@ -90,10 +94,14 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 
 ```bash
 git tag vX.Y.Z
-git push origin main --tags
-git push github main --tags
+git push origin main
+git push origin vX.Y.Z
+git push github main
+git push github vX.Y.Z
 bash scripts/publish-release.sh vX.Y.Z
 ```
+
+禁止 `git push --tags`：本地可能残留已在远端存在的旧 tag，整次推送会被拒，新 tag 看起来没出去。
 
 公开安装渠道：Homebrew `x0c/tap/agent-auto-model`、`install.sh`、`install.ps1`、`go install`。  
 CI 的 `release.yml` 只补其它平台包与配方兜底，**不得**作为唯一升级通路。
@@ -113,6 +121,8 @@ go test ./...
 node --test internal/assets/register.test.mjs
 go build -ldflags "-X main.version=$(tr -d '[:space:]' < VERSION)" -o /tmp/agent-auto-model ./cmd/agent-auto-model
 ```
+
+装到本机后还要看 `agent-auto-model status`：包装路径必须是 `~/.local/share/agent-auto-model/bin/`，不能只看 version。用户问开发机是否跟上，按 `docs/MAINTAINER_GUIDE.md`「双机对齐」两边都查。
 
 ## 领域地图（doc-init）
 

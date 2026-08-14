@@ -90,13 +90,17 @@ CLI `--mode` 只接受 `plan` / `ask`（Ask 内部是 `search`）；Agent 模式
 
 **hook 范围**：`.zshrc`、`.bashrc`、`.zprofile`、**`.profile`**。标记行为 `# agent-auto-model PATH`（安装/卸载时同时清掉本机残留的旧 PATH 标记）。
 
-**验收 login shell**（SSH / 图形终端常见）：
+**验收 login shell**：用用户真正的默认 shell，不要想当然用 `bash -l`。这台 Mac 默认是 zsh；若存在独立 `.bash_profile` 且不 source `.profile`，`bash -l` 会看不到包装，从而误判「没装上」。
 
 ```bash
-bash -l -c 'agent-auto-model status'   # wrapper_effective / active 应为 true
-bash -l -c 'type -a agent | head -1'     # 应命中 ~/.local/share/agent-auto-model/bin/agent
-bash -l -c 'type -a codex | head -1'     # 应命中同一包装目录下的 codex
+# Mac（zsh）
+zsh -lic 'agent-auto-model status'       # wrapper_effective / active 应为 true
+zsh -lic 'type -a agent | head -1'       # 应命中 ~/.local/share/agent-auto-model/bin/agent
+# 开发机 login bash（.profile 末尾有 hook）
+bash -l -c 'agent-auto-model status'
 ```
+
+`status` 里的包装路径必须是新目录。只看 `version` 不够：改名后旧包装目录仍可能排在 PATH 最前，命令能跑但自动切换没生效。`install` 必须清掉旧包装目录；若仍命中旧路径，先删旧 `bin/` 再装一次，并**新开终端**。
 
 **入口别走岔路**：
 
@@ -119,7 +123,8 @@ bash -l -c 'type -a codex | head -1'     # 应命中同一包装目录下的 cod
 - 客户端默认拉 `https://raw.githubusercontent.com/x0c/agent-auto-model/main/recommended-models.json`；测试用 `AGENT_AUTO_MODEL_RECOMMENDED_URL` 覆盖。
 - 检测：后台 `update --auto` 顺带做 ETag 条件请求，间隔约 6 小时；失败保留旧缓存，再没有则用内置副本。不要绑发版。
 - 运行态：`~/.local/share/agent-auto-model/recommended.json`。
-- 生效：`models_source=recommended` 时用缓存覆盖模型映射；`local` 时认用户文件。`config set` 会切到 `local`。
+- 生效：`models_source=recommended` 时用缓存覆盖模型映射；`local` 时认用户文件。`config set` 会切到 `local`。来源是整表两态，不做「改过的键保留、没改的继续跟随」。
+- 改完推荐表并推到 `main` 后，跟随推荐的机器跑 `agent-auto-model config refresh-recommended` 即可吃到，不必等二进制升级；已开对话仍需重开。
 - 单测默认不打网：二进制名含 `.test` 且未设 `AGENT_AUTO_MODEL_RECOMMENDED_URL` 时跳过拉取（避免其它包测试误打 GitHub）。设了 URL 时即使是测试也会请求。`AGENT_AUTO_MODEL_SKIP_RECOMMENDED_CHECK=1` 或 `AGENT_AUTO_MODEL_SKIP_UPDATE_CHECK=1` 同样跳过。
 - 后台刷新子进程只设 `BACKGROUND_UPDATE_CHILD=1`，禁止再带 `SKIP_UPDATE_CHECK=1`，否则子进程什么都不干。
 
@@ -135,6 +140,20 @@ bash -l -c 'type -a codex | head -1'     # 应命中同一包装目录下的 cod
 1. **新建配方必须先 `git add` 再看 staged diff**。对未跟踪文件跑 `git diff --quiet` 会误判「无需改动」，配方看起来更新成功、远端却没有文件。
 2. **本机上传附件与 CI `release.yml` 可能抢同名资源导致 404**。附件失败不要中断配方更新；用户能否 `brew upgrade` 取决于配方指向的源码归档，不取决于预编译包是否齐。
 3. **v* tag 推到 github 后立刻跑本机 `publish-release.sh`**；CI 只补其它平台包与配方兜底，不能当唯一升级通路。
+4. **禁止 `git push --tags`**。只推 `main` 和本次 `vX.Y.Z`。本地若残留已在远端存在的旧 tag，`--tags` 会让整次推送被拒。
+
+## 双机对齐
+
+开发机 `~/Codes` 是这台 Mac 的同步镜像（路径仍写成 `/Users/geraltgraham/Codes`，用户是 `vibecoder`）。不要 ssh 成 root 去 `/root/Codes` 找项目。
+
+产品目录改名或 GitHub / Forgejo 仓库改名后，**不要等同步自己完成**：
+
+1. 开发机上若还是旧目录名：把它改成新名（同步常把改名当成删+建，旧目录会带着半成品脏文件留下来）。
+2. `git remote` 仍可能指向旧仓库 URL，fetch 会报仓库不存在。按 `AGENTS.md` Remote 表改 `origin` 与 `github` 后再拉。
+3. 快进到 `origin/main`，装上当前版本，清掉旧命令名 / 旧包装目录。
+4. 两边都跑 `status`：包装路径是新目录、包装生效。同步面板里「还差几十个文件」可能是别的项目的 Git 对象，不能当成这个工具没对齐。
+
+用户问「这台和开发机是不是最新、能不能跑」时按上面逐项核对，禁止只报本机 version。
 
 ## 独立性
 
