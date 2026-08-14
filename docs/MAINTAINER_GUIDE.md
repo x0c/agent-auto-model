@@ -82,7 +82,7 @@ CLI `--mode` 只接受 `plan` / `ask`（Ask 内部是 `search`）；Agent 模式
 
 改写字段集中在 `internal/runtime/codex/rewrite`。审计：`~/.local/share/agent-auto-model/assets/codex-decisions.log`。
 
-验收：`status` 里 `[codex] wrapper=true`，Shift+Tab 切 Plan 后 log 出现 `ev=corrected mode=plan expected=gpt-5.6-sol:high`。
+验收：`status` 里 `[codex] wrapper=true`，Shift+Tab 切 Plan 后 log 出现 `ev=corrected mode=plan`，模型展开为当前最新 Sol。
 
 ## 包装与 PATH
 
@@ -115,6 +115,7 @@ bash -l -c 'type -a codex | head -1'     # 应命中同一包装目录下的 cod
 ## 推荐模型配置
 
 - 权威文件：仓库根 `recommended-models.json`（与 `internal/recommended/recommended-models.json` 必须保持一致，单测对照）。
+- **禁止钉死版本号**：Opus / Grok / Sol / Terra 一律通配符（如 `claude-opus-*-thinking-high`、`gpt-*-sol:high`），运行时按当前可用模型选最新。
 - 客户端默认拉 `https://raw.githubusercontent.com/x0c/agent-auto-model/main/recommended-models.json`；测试用 `AGENT_AUTO_MODEL_RECOMMENDED_URL` 覆盖。
 - 检测：后台 `update --auto` 顺带做 ETag 条件请求，间隔约 6 小时；失败保留旧缓存，再没有则用内置副本。不要绑发版。
 - 运行态：`~/.local/share/agent-auto-model/recommended.json`。

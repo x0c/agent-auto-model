@@ -68,7 +68,7 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 - Cursor 内层：Node `registerHooks` 改写 Agent 打包 JS。锚点唯一来源：`internal/assets/anchors.json`。
 - Codex 内层：进程内 UDS WebSocket 代理，上游 `codex app-server --stdio`，TUI 以 `codex --remote unix://<临时 sock>` 连接；改写 `turn/start` / `thread/settings/update` 的 `model`+`effort`（及 `collaborationMode.settings`）。JSON-RPC 字段集中在 `internal/runtime/codex/rewrite`。
 - 配置 v2：`runtimes.cursor` / `runtimes.codex`；v1 扁平 `models` 读入时视为 Cursor 映射。
-- 模型映射来源：`models_source=recommended|local`。缺省按内容推断（与内置推荐一致→推荐配置，否则本地自定义）。推荐文件：`recommended-models.json`，后台 ETag 刷新。`config set` 后切成本地自定义。切回：`config set-models-source recommended`。
+- 模型映射来源：`models_source=recommended|local`。缺省按内容推断（与内置推荐一致→推荐配置，否则本地自定义）。推荐文件：`recommended-models.json`，后台 ETag 刷新。`config set` 后切成本地自定义。切回：`config set-models-source recommended`。推荐表禁止钉死版本号（Opus / Grok / Sol / Terra 用通配符）。
 - 显式 `--model`：Cursor 本会话不自动切换（包装只认 `--model` / `--model=`）。Codex 还认 `-m` / `-m=`。
 - 总开关：`AGENT_AUTO_MODEL=0` 或 `config disable`。
 - Cursor 锚点漂移 / Codex 代理失败：故障开放。

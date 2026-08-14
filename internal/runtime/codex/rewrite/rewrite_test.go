@@ -106,6 +106,28 @@ func TestObserveModelListAndGlob(t *testing.T) {
 	}
 }
 
+func TestObserveModelListFamilyGlob(t *testing.T) {
+	st := NewState(map[string]string{
+		"plan":    "gpt-*-sol:high",
+		"default": "gpt-*-terra:medium",
+	}, false)
+	ObserveOutgoing([]byte(`{"id":3,"result":{"data":[{"id":"gpt-5.4-sol"},{"id":"gpt-5.6-sol"},{"id":"gpt-5.4-terra"},{"id":"gpt-5.6-terra"}]}}`), st)
+	out, d := RewriteIncoming([]byte(`{"method":"thread/start","params":{"collaborationMode":{"mode":"plan"}}}`), st)
+	if d == nil || d.Mode != "plan" {
+		t.Fatalf("decision=%#v out=%s", d, out)
+	}
+	if !strings.Contains(string(out), `"model":"gpt-5.6-sol"`) {
+		t.Fatalf("expected latest sol, out=%s decision=%#v", out, d)
+	}
+	out, d = RewriteIncoming([]byte(`{"method":"thread/start","params":{"collaborationMode":{"mode":"default"}}}`), st)
+	if d == nil || d.Mode != "default" {
+		t.Fatalf("decision=%#v out=%s", d, out)
+	}
+	if !strings.Contains(string(out), `"model":"gpt-5.6-terra"`) {
+		t.Fatalf("expected latest terra, out=%s decision=%#v", out, d)
+	}
+}
+
 func TestTurnStartPlan(t *testing.T) {
 	st := NewState(map[string]string{"plan": "gpt-5.6-sol:high", "default": "gpt-5.6-terra:medium"}, false)
 	out, d := RewriteIncoming([]byte(`{"method":"turn/start","params":{"threadId":"t","input":[],"collaborationMode":{"mode":"plan","settings":{"model":"gpt-5.6-terra"}}}}`), st)

@@ -70,7 +70,7 @@ test('currentMode：都没有时返回 null（禁止瞎猜 default）', () => {
 
 test('resolveModel 按配置映射（无 mgr 时通配符无法展开）', () => {
   globalThis.__cursorModeModelManager = undefined;
-  assert.equal(resolveModel('plan'), 'claude-opus-5-thinking-high');
+  assert.equal(resolveModel('plan'), null);
   assert.equal(resolveModel('default'), null);
   assert.equal(resolveModel('search'), null);
 });
@@ -83,9 +83,15 @@ test('通配符自动选最新模型，且同版本优先非 fast', () => {
     'cursor-grok-4.5-high-fast',
     'cursor-grok-4.6-high',
     'cursor-grok-4.6-high-fast',
+    'claude-opus-4.6-thinking-high',
+    'claude-opus-5-thinking-high',
     'claude-opus-5',
   ];
   assert.equal(pickLatestMatching('cursor-grok-*-high', candidates), 'cursor-grok-4.6-high');
+  assert.equal(
+    pickLatestMatching('claude-opus-*-thinking-high', candidates),
+    'claude-opus-5-thinking-high',
+  );
   assert.equal(
     pickLatestMatching('cursor-grok-4.5-*', candidates),
     'cursor-grok-4.5-high',

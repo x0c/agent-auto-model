@@ -16,14 +16,14 @@
 
 | Runtime | Mode | 默认模型 |
 |---|---|---|
-| Cursor | Plan | `claude-opus-5-thinking-high` |
+| Cursor | Plan | `claude-opus-*-thinking-high`（运行时展开为当前最新） |
 | Cursor | Agent / Ask / Debug（配置键 `default` / `search` / `debug`） | `cursor-grok-*-high`（运行时展开为当前最新） |
-| Codex | Plan | `gpt-5.6-sol:high` |
-| Codex | Default | `gpt-5.6-terra:medium` |
+| Codex | Plan | `gpt-*-sol:high`（运行时展开为当前最新 Sol） |
+| Codex | Default | `gpt-*-terra:medium`（运行时展开为当前最新 Terra） |
 
 Cursor 可配键：`plan` / `default` / `search` / `debug`。别名：`ask` → `search`，`agent` → `default`。CLI `--mode ask` 对应内部 `search`。
 
-Codex 可配键：`plan` / `default`。取值是 `模型[:力度]`，例如 `gpt-5.6-sol:high`。
+Codex 可配键：`plan` / `default`。取值是 `模型[:力度]`，例如 `gpt-*-sol:high`。
 
 未写 runtime 前缀的 `config set plan …` 视为 `cursor.plan`（旧写法，Codex 必须带 `codex.`）。
 
@@ -44,17 +44,17 @@ agent-auto-model config show
 
 ```bash
 # Cursor
-agent-auto-model config set cursor.plan claude-opus-5-thinking-high
+agent-auto-model config set cursor.plan 'claude-opus-*-thinking-high'
 agent-auto-model config set cursor.default 'cursor-grok-*-high'
 agent-auto-model config set cursor.search 'cursor-grok-*-high'
 agent-auto-model config set cursor.debug 'cursor-grok-*-high'
 
 # Codex
-agent-auto-model config set codex.plan gpt-5.6-sol:high
-agent-auto-model config set codex.default gpt-5.6-terra:medium
+agent-auto-model config set codex.plan 'gpt-*-sol:high'
+agent-auto-model config set codex.default 'gpt-*-terra:medium'
 
 # 一次改多条
-agent-auto-model config set-many cursor.plan=claude-opus-5-thinking-high cursor.default='cursor-grok-*-high' codex.plan=gpt-5.6-sol:high
+agent-auto-model config set-many cursor.plan='claude-opus-*-thinking-high' cursor.default='cursor-grok-*-high' codex.plan='gpt-*-sol:high'
 ```
 
 模型 ID 可用 `*` / `?` 通配符；发送前按当前可用模型展开，选最新版本。
@@ -133,7 +133,7 @@ agent-auto-model uninstall                             # 卸包装
 ## 验证路径
 
 ```bash
-agent-auto-model config set cursor.plan claude-opus-5-thinking-high
+agent-auto-model config set cursor.plan 'claude-opus-*-thinking-high'
 agent-auto-model config show
 agent-auto-model config disable
 agent-auto-model status

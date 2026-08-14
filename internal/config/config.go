@@ -25,7 +25,7 @@ const (
 	ModelsSourceLocal       = "local"
 )
 
-// DefaultCursorModels 来自内置推荐配置：Plan→Opus 5，其它→当前最新 Grok high。
+// DefaultCursorModels 来自内置推荐配置：Plan→最新 Opus thinking-high，其它→当前最新 Grok high。
 var DefaultCursorModels = map[string]string{}
 
 // DefaultCodexModels 来自内置推荐配置。

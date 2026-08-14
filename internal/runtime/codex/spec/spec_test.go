@@ -23,4 +23,7 @@ func TestParse(t *testing.T) {
 	if !IsGlob("gpt-5.6-*:high") || IsGlob("gpt-5.6-sol:high") {
 		t.Fatal("glob")
 	}
+	if !IsGlob("gpt-*-sol:high") || !IsGlob("gpt-*-terra:medium") {
+		t.Fatal("family glob")
+	}
 }

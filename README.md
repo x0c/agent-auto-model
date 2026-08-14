@@ -15,8 +15,8 @@ This tool does not bill models. You still need Cursor Agent CLI and/or Codex CLI
 
 | Tool | Plan | Everything else |
 |---|---|---|
-| Cursor Agent CLI | `claude-opus-5-thinking-high` | `cursor-grok-*-high` (latest matching Grok High) |
-| Codex CLI | `gpt-5.6-sol:high` | `gpt-5.6-terra:medium` |
+| Cursor Agent CLI | `claude-opus-*-thinking-high` (latest matching Opus High) | `cursor-grok-*-high` (latest matching Grok High) |
+| Codex CLI | `gpt-*-sol:high` (latest matching Sol High) | `gpt-*-terra:medium` (latest matching Terra Medium) |
 
 Cursor also maps Ask → `search` and Debug → `debug` (same default as Agent). Codex only has Plan vs Default.
 
@@ -90,17 +90,17 @@ Replace the model id with whatever you want. These write to your config and stay
 
 ```bash
 # Cursor: Plan / Agent / Ask / Debug
-agent-auto-model config set cursor.plan claude-opus-5-thinking-high
+agent-auto-model config set cursor.plan 'claude-opus-*-thinking-high'
 agent-auto-model config set cursor.default 'cursor-grok-*-high'
 agent-auto-model config set cursor.search 'cursor-grok-*-high'
 agent-auto-model config set cursor.debug 'cursor-grok-*-high'
 
 # Codex: Plan / Default  (value is model[:effort])
-agent-auto-model config set codex.plan gpt-5.6-sol:high
-agent-auto-model config set codex.default gpt-5.6-terra:medium
+agent-auto-model config set codex.plan 'gpt-*-sol:high'
+agent-auto-model config set codex.default 'gpt-*-terra:medium'
 
 # Several at once
-agent-auto-model config set-many cursor.plan=claude-opus-5-thinking-high codex.default=gpt-5.6-terra:medium
+agent-auto-model config set-many cursor.plan='claude-opus-*-thinking-high' codex.default='gpt-*-terra:medium'
 ```
 
 `config set plan …` (no prefix) still means `cursor.plan`. Codex **must** use `codex.plan` / `codex.default`.

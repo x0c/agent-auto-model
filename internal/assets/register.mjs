@@ -53,7 +53,7 @@ function loadConfig() {
     enabled: true,
     strict: false,
     models: {
-      plan: 'claude-opus-5-thinking-high',
+      plan: 'claude-opus-*-thinking-high',
       default: 'cursor-grok-*-high',
       search: 'cursor-grok-*-high',
       debug: 'cursor-grok-*-high',

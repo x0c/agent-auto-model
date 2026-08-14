@@ -15,8 +15,8 @@
 
 | 工具 | Plan | 其它 Mode |
 |---|---|---|
-| Cursor Agent CLI | `claude-opus-5-thinking-high` | `cursor-grok-*-high`（自动选当前最新的 Grok High） |
-| Codex CLI | `gpt-5.6-sol:high` | `gpt-5.6-terra:medium` |
+| Cursor Agent CLI | `claude-opus-*-thinking-high`（自动选当前最新的 Opus High） | `cursor-grok-*-high`（自动选当前最新的 Grok High） |
+| Codex CLI | `gpt-*-sol:high`（自动选当前最新的 Sol High） | `gpt-*-terra:medium`（自动选当前最新的 Terra Medium） |
 
 Cursor 还会把 Ask 记成 `search`、Debug 记成 `debug`（默认模型和 Agent 一样）。Codex 只有 Plan 和 Default。
 
@@ -90,17 +90,17 @@ agent-auto-model status
 
 ```bash
 # Cursor：Plan / Agent / Ask / Debug
-agent-auto-model config set cursor.plan claude-opus-5-thinking-high
+agent-auto-model config set cursor.plan 'claude-opus-*-thinking-high'
 agent-auto-model config set cursor.default 'cursor-grok-*-high'
 agent-auto-model config set cursor.search 'cursor-grok-*-high'
 agent-auto-model config set cursor.debug 'cursor-grok-*-high'
 
 # Codex：Plan / Default（值为 模型[:力度]）
-agent-auto-model config set codex.plan gpt-5.6-sol:high
-agent-auto-model config set codex.default gpt-5.6-terra:medium
+agent-auto-model config set codex.plan 'gpt-*-sol:high'
+agent-auto-model config set codex.default 'gpt-*-terra:medium'
 
 # 一次改多条
-agent-auto-model config set-many cursor.plan=claude-opus-5-thinking-high codex.default=gpt-5.6-terra:medium
+agent-auto-model config set-many cursor.plan='claude-opus-*-thinking-high' codex.default='gpt-*-terra:medium'
 ```
 
 不写前缀的 `config set plan …` 仍当成 `cursor.plan`。Codex **必须**写成 `codex.plan` / `codex.default`。

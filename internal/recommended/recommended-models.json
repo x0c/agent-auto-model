@@ -3,7 +3,7 @@
   "runtimes": {
     "cursor": {
       "models": {
-        "plan": "claude-opus-5-thinking-high",
+        "plan": "claude-opus-*-thinking-high",
         "default": "cursor-grok-*-high",
         "search": "cursor-grok-*-high",
         "debug": "cursor-grok-*-high"
@@ -11,8 +11,8 @@
     },
     "codex": {
       "models": {
-        "plan": "gpt-5.6-sol:high",
-        "default": "gpt-5.6-terra:medium"
+        "plan": "gpt-*-sol:high",
+        "default": "gpt-*-terra:medium"
       }
     }
   }
