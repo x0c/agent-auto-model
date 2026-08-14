@@ -27,9 +27,11 @@ const (
 	defaultRepo                  = "x0c/cursor-mode-model"
 	defaultChannel               = "github_release"
 	defaultCheckIntervalHours    = 24
-	envSkipCheck                 = "CURSOR_MODE_MODEL_SKIP_UPDATE_CHECK"
-	envLatestReleaseURL          = "CURSOR_MODE_MODEL_UPDATE_LATEST_URL"
-	envBackgroundUpdateChild     = "CURSOR_MODE_MODEL_BACKGROUND_UPDATE_CHILD"
+	envSkipCheck                 = "AGENT_AUTO_MODEL_SKIP_UPDATE_CHECK"
+	envSkipCheckLegacy           = "CURSOR_MODE_MODEL_SKIP_UPDATE_CHECK"
+	envLatestReleaseURL          = "AGENT_AUTO_MODEL_UPDATE_LATEST_URL"
+	envLatestReleaseURLLegacy    = "CURSOR_MODE_MODEL_UPDATE_LATEST_URL"
+	envBackgroundUpdateChild     = "AGENT_AUTO_MODEL_BACKGROUND_UPDATE_CHILD"
 	backgroundUpdatePollDuration = 5 * time.Second
 )
 
@@ -71,7 +73,7 @@ type latestRelease struct {
 
 // MaybeCheckAndUpdate 按间隔执行一次静默自更新。
 func MaybeCheckAndUpdate(home, currentVersion, executablePath string, force bool) error {
-	if os.Getenv(envSkipCheck) == "1" {
+	if os.Getenv(envSkipCheck) == "1" || os.Getenv(envSkipCheckLegacy) == "1" {
 		return nil
 	}
 	cfg := config.Load(home)
@@ -121,7 +123,7 @@ func MaybeCheckAndUpdate(home, currentVersion, executablePath string, force bool
 	if err != nil {
 		return saveError(home, target, err)
 	}
-	tmpDir, err := os.MkdirTemp("", "cursor-mode-model-update-*")
+	tmpDir, err := os.MkdirTemp("", "agent-auto-model-update-*")
 	if err != nil {
 		return saveError(home, target, fmt.Errorf("创建临时目录失败: %w", err))
 	}
@@ -138,7 +140,7 @@ func MaybeCheckAndUpdate(home, currentVersion, executablePath string, force bool
 	if err := replaceBinary(newBinary, target); err != nil {
 		return saveError(home, target, err)
 	}
-	if _, err := install.Install(home, target, false); err != nil {
+	if _, err := install.Install(home, target, false, nil); err != nil {
 		return saveError(home, target, fmt.Errorf("更新后二次 install 失败: %w", err))
 	}
 	st.InProgress = false
@@ -149,7 +151,7 @@ func MaybeCheckAndUpdate(home, currentVersion, executablePath string, force bool
 
 // KickoffBackgroundCheck 启动后台子进程执行自更新，不阻塞主流程。
 func KickoffBackgroundCheck(home, executablePath string) {
-	if os.Getenv(envSkipCheck) == "1" || os.Getenv(envBackgroundUpdateChild) == "1" {
+	if os.Getenv(envSkipCheck) == "1" || os.Getenv(envSkipCheckLegacy) == "1" || os.Getenv(envBackgroundUpdateChild) == "1" {
 		return
 	}
 	cfg := config.Load(home)
@@ -192,6 +194,9 @@ func LoadRuntimeStatus(home string) RuntimeStatus {
 func fetchLatestRelease() (latestRelease, error) {
 	url := os.Getenv(envLatestReleaseURL)
 	if strings.TrimSpace(url) == "" {
+		url = os.Getenv(envLatestReleaseURLLegacy)
+	}
+	if strings.TrimSpace(url) == "" {
 		url = fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", defaultRepo)
 	}
 	resp, err := httpClient.Get(url)
@@ -215,17 +220,19 @@ func fetchLatestRelease() (latestRelease, error) {
 func selectAsset(rel latestRelease) (string, string, error) {
 	version := strings.TrimPrefix(strings.TrimSpace(rel.TagName), "v")
 	ext := ".tar.gz"
-	allowAnyURL := strings.TrimSpace(os.Getenv(envLatestReleaseURL)) != ""
+	allowAnyURL := strings.TrimSpace(os.Getenv(envLatestReleaseURL)) != "" || strings.TrimSpace(os.Getenv(envLatestReleaseURLLegacy)) != ""
 	if runtime.GOOS == "windows" {
 		ext = ".zip"
 	}
-	want := fmt.Sprintf("cursor-mode-model_%s_%s_%s%s", version, runtime.GOOS, goArchName(runtime.GOARCH), ext)
+	suffix := fmt.Sprintf("_%s_%s_%s%s", version, runtime.GOOS, goArchName(runtime.GOARCH), ext)
+	wantNew := "agent-auto-model" + suffix
+	wantOld := "cursor-mode-model" + suffix
 	for _, asset := range rel.Assets {
-		if asset.Name == want && (allowAnyURL || strings.HasPrefix(asset.URL, "https://github.com/")) {
+		if (asset.Name == wantNew || asset.Name == wantOld) && (allowAnyURL || strings.HasPrefix(asset.URL, "https://github.com/")) {
 			return asset.URL, asset.Name, nil
 		}
 	}
-	return "", "", fmt.Errorf("未找到当前平台更新包 %s", want)
+	return "", "", fmt.Errorf("未找到当前平台更新包 %s", wantNew)
 }
 
 func goArchName(goarch string) string {
@@ -281,13 +288,13 @@ func extractTarGzBinary(archivePath, tmpDir string) (string, error) {
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
-			return "", errors.New("更新包里未找到 cursor-mode-model 二进制")
+			return "", errors.New("更新包里未找到 agent-auto-model 二进制")
 		}
 		if err != nil {
 			return "", fmt.Errorf("读取 tar 更新包失败: %w", err)
 		}
 		name := filepath.Base(hdr.Name)
-		if name != "cursor-mode-model" && name != "cursor-mode-model.exe" {
+		if !isOurBinaryName(name) {
 			continue
 		}
 		out := filepath.Join(tmpDir, name)
@@ -314,7 +321,7 @@ func extractZipBinary(archivePath, tmpDir string) (string, error) {
 	defer zr.Close()
 	for _, f := range zr.File {
 		name := filepath.Base(f.Name)
-		if name != "cursor-mode-model.exe" && name != "cursor-mode-model" {
+		if !isOurBinaryName(name) {
 			continue
 		}
 		rc, err := f.Open()
@@ -338,7 +345,16 @@ func extractZipBinary(archivePath, tmpDir string) (string, error) {
 		}
 		return out, nil
 	}
-	return "", errors.New("更新包里未找到 cursor-mode-model 二进制")
+	return "", errors.New("更新包里未找到 agent-auto-model 二进制")
+}
+
+func isOurBinaryName(name string) bool {
+	switch name {
+	case "agent-auto-model", "agent-auto-model.exe", "cursor-mode-model", "cursor-mode-model.exe":
+		return true
+	default:
+		return false
+	}
 }
 
 func replaceBinary(src, target string) error {

@@ -2,16 +2,16 @@
 
 ## Mode→模型挂钩
 
-预加载脚本：`internal/assets/register.mjs`（经 `go:embed` 打进二进制，install/exec 时落到 `~/.local/share/cursor-mode-model/assets/`）。
+预加载脚本：`internal/assets/register.mjs`（经 `go:embed` 打进二进制，install/exec 时落到 `~/.local/share/agent-auto-model/assets/`）。
 
 **锚点字符串唯一来源**：`internal/assets/anchors.json`（Go 的 `anchors.Check` 与预加载 `patchSource` 都读它；禁止在两处各写一份）。
 
-挂钩点（Agent `2026.08.04-aaa8809` 核实）：
+挂钩点（Agent `2026.08.11-e8db854` 核实；minify 局部变量名会漂，以 `anchors.json` 为准）：
 
 - `setCurrentModel` / `setCurrentModelWithParameters` / `setModelFromStoredId`（抓模型管理器 + 配置；后者调用时武装恢复后对齐）
 - `getCurrentModel(){return this.deriveCurrentModelDetails()`（Mode 早于写模型时也能 stash）
 - `setMetadata(e,t){this.metadataStore.set(e,t)}`（Mode 变化入口；stash 会话 store，并 `subscribeToMetadata('mode')`）
-- `buildRequestedModel(){var e,t,r,n;const o=this.currentSelectedModel;`（**发送前强制**按当前 Mode 覆盖 `modelId`）
+- `buildRequestedModel(){var e,t,n,r;const o=this.currentSelectedModel;`（**发送前强制**按当前 Mode 覆盖 `modelId`）
 
 ### 模式识别（P0）
 
@@ -23,6 +23,8 @@
 
 `claude-opus-5-thinking-high` 经官方 `mapModelToParameterizedSelection` 会变成 `claude-opus-5` + thinking/effort 参数。比较与强制必须用归一后的 id，并保留 `getParametersForModel` 参数，否则会悄悄降档。
 
+Grok 4.6 起：`cursor-grok-*-high` 与 `cursor-grok-*-high-fast` **共用** `modelId=grok-4.6`，只靠参数 `fast` 区分。官方 `getParametersForModel` 会沿用上次选择 / `cli-config.json` 里存的 `fast=true`，导致通配符选中 non-fast 别名后 UI 仍显示 High Fast。强制与等价判断必须按规格意图覆盖并比较 `fast`（`*-high` → `false`，`*-high-fast` → `true`）。
+
 ### 通配符模型
 
 配置可写 `cursor-grok-*-high` 这类 shell 通配符。预加载在发送前用 `parameterizedModelMap` / `availableModels` 收集候选，按版本号选最新；同版本优先非 `-fast`。展开失败时故障开放（本轮不强制），并写 `glob_expand_miss` 诊断。
@@ -31,7 +33,7 @@
 
 - 默认：发送前纠正内存选择，并异步走官方 API；失败只告警。
 - 配置 `"strict": true`：纠正后仍不等价则**抛错阻断本轮发送**。
-- 审计日志：`~/.local/share/cursor-mode-model/assets/decisions.log`（约 1MB 轮转，只记决策元数据）。
+- 审计日志：`~/.local/share/agent-auto-model/assets/decisions.log`（约 1MB 轮转，只记决策元数据）。
 
 切模型必须走 `setModelFromStoredId(modelId, configProvider)`（或带第三参的 `setCurrentModelWithParameters`）。`ok:false` 必须当失败并尝试降级 API。成功后 `notifyListeners()` + 写 `lastUsedModel`（归一后的真实 id）。
 
@@ -45,11 +47,12 @@
 
 1. `decisions.log` /（调试时）`sync.log` 出现 `before_build` / `corrected` / `apply_done`。
 2. 会话落盘 `providerOptions.cursor.modelName` 与 meta `lastUsedModel` 与 Mode 映射一致（**不能只看界面**）。
+3. Grok 通配符 `cursor-grok-*-high`：decisions.log 里应有 `"fast":"false"`（或字段缺失且 UI 非 High Fast）；仅 modelId 同为 `grok-4.6` 不够——High 与 High Fast 共用 id，靠参数区分。若 UI 仍显示 High Fast，查 `~/.cursor/cli-config.json` 的 `modelParameters.grok-4.6` / `selectedModel.parameters` 是否残留 `fast: true`。
 
 **必须含 resume 用例**（不带 `--mode`）：
 
 ```bash
-export PATH="$HOME/.local/share/cursor-mode-model/bin:$PATH"
+export PATH="$HOME/.local/share/agent-auto-model/bin:$PATH"
 # 新建 Plan
 agent --mode plan --print --force '只回复：PLAN_OK'
 # 记下 chat id，然后 resume 且不带 --mode —— 仍须 Opus
@@ -60,22 +63,52 @@ CLI `--mode` 只接受 `plan` / `ask`（Ask 内部是 `search`）；Agent 模式
 
 注意：同一会话 id 在不同工作目录 resume 时，落盘可能写到另一份 `~/.cursor/chats/<hash>/<id>/`。
 
-升级 Cursor Agent 后先跑 `cursor-mode-model status`。`status.active` 要求包装器真正在 PATH 上生效。长期挂着的旧会话需**重启**才会吃到新挂钩。
+升级 Cursor Agent 后先跑 `agent-auto-model status`。`status.active` 要求至少一个 runtime 的包装器真正在 PATH 上生效。长期挂着的旧会话需**重启**才会吃到新挂钩。
+
+## Codex 代理
+
+交互式 TUI 不打补丁（Rust 原生二进制），而是：
+
+1. 包装器在临时 UDS 上做 WebSocket 服务端（TUI 握手路径为 `GET /rpc`）。
+2. 上游拉起官方 `codex app-server --stdio`。
+3. TUI 以 `codex --remote unix://<sock>` 连接。
+4. 改写 `thread/start`、`thread/resume`、`thread/settings/update`、`turn/start`：按 `collaborationMode.mode`（`plan` / `default`）写入 `model` + `effort`，并同步 `collaborationMode.settings`。
+5. `initialize` 若缺少 `experimentalApi`，代理会补上（否则 `collaborationMode` 字段会被服务端拒绝）。
+6. 用户在 TUI `/model` 显式选了与映射不符的模型 → 本会话上锁。CLI `-m/--model` 同样上锁。
+7. `exec` / `review` / `mcp` 等子命令、以及已带 `--remote` 的调用原样透传。
+8. 代理起不来：stderr 一行告警后 exec 官方 `codex`。
+
+改写字段集中在 `internal/runtime/codex/rewrite`。审计：`~/.local/share/agent-auto-model/assets/codex-decisions.log`。
+
+验收：`status` 里 `[codex] wrapper=true`，Shift+Tab 切 Plan 后 log 出现 `ev=corrected mode=plan expected=gpt-5.6-sol:high`。
 
 ## 包装与 PATH
 
-`install` 在 `~/.local/share/cursor-mode-model/bin/` 写入包装脚本（Unix）或 `.cmd`（Windows），并尽量 prepend 进 shell rc / 用户 PATH；`uninstall` 必须对称清理。官方入口通常在 `~/.local/share/cursor-agent/versions/<ver>/cursor-agent`（Windows 也可能在 `%LOCALAPPDATA%\cursor-agent\versions\`）。
+`install` 在 `~/.local/share/agent-auto-model/bin/` 写入包装脚本（Unix）或 `.cmd`（Windows）：`agent`、`cursor-agent`、`codex`。旧目录 `~/.local/share/cursor-mode-model` 在读配置时仍作回退。
 
-shell **函数 / alias 优先于 PATH**——`status.wrapper_effective` 会反映。
+**hook 范围**：`.zshrc`、`.bashrc`、`.zprofile`、**`.profile`**。标记行为 `# agent-auto-model PATH`（卸载时同时清旧 `# cursor-mode-model PATH`）。
+
+**验收 login shell**（SSH / 图形终端常见）：
+
+```bash
+bash -l -c 'agent-auto-model status'   # wrapper_effective / active 应为 true
+bash -l -c 'type -a agent | head -1'     # 应命中 ~/.local/share/agent-auto-model/bin/agent
+bash -l -c 'type -a codex | head -1'     # 应命中同一包装目录下的 codex
+```
+
+**入口别走岔路**：
+
+- 请直接敲 `agent` 或 `cursor-agent`（经 PATH 包装）。
+- **`cursor agent` 不行**：官方 `~/.local/bin/cursor` shim 在无桌面 IDE 时会 `exec ~/.local/bin/agent`，硬编码绕过包装目录。
+- shell **函数 / alias 优先于 PATH**（如 pickup 的 `cursor-agent()`）——`status.wrapper_effective` 会反映；管理类子命令（`login` / `update` / `mcp` …）通常 passthrough 到真二进制。
 
 ## 静默自更新
 
-- 入口：普通 `cursor-mode-model ...` 子命令会在执行前按间隔检查更新；`agent` / `cursor-agent` 包装路径会先拉起后台子进程执行 `cursor-mode-model update --auto --quiet`，然后立即转调官方 Agent。
-- 更新源：固定走 GitHub Releases latest API，按 `cursor-mode-model_<version>_<os>_<arch>.{tar.gz|zip}` 选当前平台资产。
-- 安装收尾：下载并替换二进制后，必须复用 `install.Install(...)` 刷新 wrapper、运行时资产和 PATH 片段，避免只换二进制不换包装。
-- 运行态文件：`~/.local/share/cursor-mode-model/autoupdate.json` 记录最近检查/安装/错误；`autoupdate.lock` 防止并发会话同时覆盖二进制。
-- 设计原则：更新失败一律故障开放，不阻断模型切换或 Agent 启动；诊断信息通过 `status` 暴露，不依赖终端噪音。
-- 测试时可用 `CURSOR_MODE_MODEL_UPDATE_LATEST_URL` 覆盖 latest API，指向本地 `httptest` 服务。
+- 入口：普通 `agent-auto-model ...` 子命令会在执行前按间隔检查更新；包装路径会先拉起后台子进程执行 `agent-auto-model update --auto --quiet`。
+- 更新源：固定走 GitHub Releases latest API，按 `agent-auto-model_<version>_<os>_<arch>.{tar.gz|zip}` 选当前平台资产（兼容旧名 `cursor-mode-model_*`）。
+- 安装收尾：下载并替换二进制后，必须复用 `install.Install(...)` 刷新 wrapper、运行时资产和 PATH 片段。
+- 运行态文件：`~/.local/share/agent-auto-model/autoupdate.json`。
+- 测试时可用 `AGENT_AUTO_MODEL_UPDATE_LATEST_URL`（兼容 `CURSOR_MODE_MODEL_UPDATE_LATEST_URL`）覆盖 latest API。
 
 ## 发版与双远端
 

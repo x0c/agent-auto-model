@@ -1,4 +1,4 @@
-# 一键安装 cursor-mode-model（Windows）。
+# 一键安装 agent-auto-model（Windows）。
 # 用法：irm https://raw.githubusercontent.com/x0c/cursor-mode-model/main/install.ps1 | iex
 [CmdletBinding()]
 param(
@@ -11,13 +11,13 @@ Set-StrictMode -Version Latest
 
 function Write-Step {
     param([string]$Message)
-    Write-Host "cursor-mode-model: $Message"
+    Write-Host "agent-auto-model: $Message"
 }
 
 function Get-RequestHeaders {
     $headers = @{
         Accept = "application/vnd.github+json"
-        "User-Agent" = "cursor-mode-model-installer"
+        "User-Agent" = "agent-auto-model-installer"
         "X-GitHub-Api-Version" = "2022-11-28"
     }
     $token = if ($env:GH_TOKEN) { $env:GH_TOKEN } elseif ($env:GITHUB_TOKEN) { $env:GITHUB_TOKEN } else { $null }
@@ -84,10 +84,15 @@ try {
     } else {
         throw "32-bit Windows is not supported."
     }
-    $assetName = "cursor-mode-model_${versionNumber}_windows_${arch}.zip"
+    $assetName = "agent-auto-model_${versionNumber}_windows_${arch}.zip"
+    $legacyAssetName = "cursor-mode-model_${versionNumber}_windows_${arch}.zip"
     $asset = @($release.assets | Where-Object { $_.name -eq $assetName }) | Select-Object -First 1
     if (-not $asset) {
-        throw "Release $tag does not contain $assetName. Fallback: go install github.com/x0c/cursor-mode-model/cmd/cursor-mode-model@$tag"
+        $asset = @($release.assets | Where-Object { $_.name -eq $legacyAssetName }) | Select-Object -First 1
+        $assetName = $legacyAssetName
+    }
+    if (-not $asset) {
+        throw "Release $tag does not contain agent-auto-model_${versionNumber}_windows_${arch}.zip. Fallback: go install github.com/x0c/cursor-mode-model/cmd/agent-auto-model@$tag"
     }
 
     $installDirectory = if ($env:CMM_PREFIX) {
@@ -97,19 +102,29 @@ try {
     }
     New-Item -ItemType Directory -Force -Path $installDirectory | Out-Null
 
-    $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("cursor-mode-model-" + [Guid]::NewGuid().ToString("N"))
+    $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("agent-auto-model-" + [Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
     try {
         $zipPath = Join-Path $tempRoot $assetName
         Write-Step "Downloading $assetName..."
         Invoke-WebRequest -Uri $asset.browser_download_url -Headers $headers -OutFile $zipPath
         Expand-Archive -Path $zipPath -DestinationPath $tempRoot -Force
-        $exe = Get-ChildItem -Path $tempRoot -Filter "cursor-mode-model.exe" -Recurse | Select-Object -First 1
+        $exe = Get-ChildItem -Path $tempRoot -Filter "agent-auto-model.exe" -Recurse | Select-Object -First 1
         if (-not $exe) {
-            throw "Archive did not contain cursor-mode-model.exe"
+            $exe = Get-ChildItem -Path $tempRoot -Filter "cursor-mode-model.exe" -Recurse | Select-Object -First 1
         }
-        $target = Join-Path $installDirectory "cursor-mode-model.exe"
+        if (-not $exe) {
+            throw "Archive did not contain agent-auto-model.exe"
+        }
+        $target = Join-Path $installDirectory "agent-auto-model.exe"
         Copy-Item -Path $exe.FullName -Destination $target -Force
+        $aliasSource = Get-ChildItem -Path $tempRoot -Filter "cursor-mode-model.exe" -Recurse | Select-Object -First 1
+        $aliasTarget = Join-Path $installDirectory "cursor-mode-model.exe"
+        if ($aliasSource) {
+            Copy-Item -Path $aliasSource.FullName -Destination $aliasTarget -Force
+        } else {
+            Copy-Item -Path $target -Destination $aliasTarget -Force
+        }
         Add-ToUserPath -Directory $installDirectory
         Write-Step "Installed $target"
 
@@ -121,8 +136,8 @@ try {
         Remove-Item -Recurse -Force $tempRoot -ErrorAction SilentlyContinue
     }
 
-    Write-Step "Done. Run: cursor-mode-model status"
-    Write-Step "Prerequisite: Cursor Agent CLI installed and logged in (https://cursor.com/install)."
+    Write-Step "Done. Run: agent-auto-model status"
+    Write-Step "Prerequisite: Cursor Agent CLI and/or Codex CLI. cursor-mode-model remains a compatibility alias."
 }
 catch {
     Write-Error $_

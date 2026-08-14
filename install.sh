@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 一键安装 cursor-mode-model（macOS / Linux）。
+# 一键安装 agent-auto-model（macOS / Linux）。
 # 用法：curl -fsSL https://raw.githubusercontent.com/x0c/cursor-mode-model/main/install.sh | bash
 set -euo pipefail
 
@@ -34,32 +34,56 @@ case "$SYSTEM" in
   *) die "此脚本仅支持 macOS 与 Linux；Windows 请用 install.ps1" ;;
 esac
 
-ASSET="cursor-mode-model_${VERSION_NUMBER}_${OS}_${ARCH}.tar.gz"
+ASSET="agent-auto-model_${VERSION_NUMBER}_${OS}_${ARCH}.tar.gz"
+LEGACY_ASSET="cursor-mode-model_${VERSION_NUMBER}_${OS}_${ARCH}.tar.gz"
 URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
+LEGACY_URL="https://github.com/${REPO}/releases/download/${VERSION}/${LEGACY_ASSET}"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-echo "正在安装 cursor-mode-model ${VERSION} ..."
-if ! curl -fsSL "$URL" -o "$TMP/$ASSET"; then
+echo "正在安装 agent-auto-model ${VERSION} ..."
+if curl -fsSL "$URL" -o "$TMP/$ASSET"; then
+  :
+elif curl -fsSL "$LEGACY_URL" -o "$TMP/$ASSET"; then
+  echo "回退到旧资产名 ${LEGACY_ASSET}"
+else
   die "下载失败：${URL}
 若 Release 尚无预编译包，可改用：
-  go install github.com/x0c/cursor-mode-model/cmd/cursor-mode-model@${VERSION}
-  cursor-mode-model install"
+  go install github.com/x0c/cursor-mode-model/cmd/agent-auto-model@${VERSION}
+  agent-auto-model install"
 fi
 
 tar -xzf "$TMP/$ASSET" -C "$TMP"
 mkdir -p "$BIN_DIR"
-install -m 755 "$TMP/cursor-mode-model" "$BIN_DIR/cursor-mode-model"
 
-# 当前会话优先用刚装的二进制
+MAIN=""
+for cand in agent-auto-model cursor-mode-model; do
+  if [ -f "$TMP/$cand" ]; then
+    install -m 755 "$TMP/$cand" "$BIN_DIR/$cand"
+    if [ -z "$MAIN" ]; then
+      MAIN="$BIN_DIR/$cand"
+    fi
+  fi
+done
+[ -n "$MAIN" ] || die "压缩包里没有 agent-auto-model / cursor-mode-model 二进制"
+if [ -x "$BIN_DIR/agent-auto-model" ]; then
+  MAIN="$BIN_DIR/agent-auto-model"
+fi
+if [ ! -e "$BIN_DIR/cursor-mode-model" ] && [ -x "$BIN_DIR/agent-auto-model" ]; then
+  ln -s agent-auto-model "$BIN_DIR/cursor-mode-model"
+fi
+if [ ! -e "$BIN_DIR/agent-auto-model" ] && [ -x "$BIN_DIR/cursor-mode-model" ]; then
+  ln -s cursor-mode-model "$BIN_DIR/agent-auto-model"
+  MAIN="$BIN_DIR/agent-auto-model"
+fi
+
 export PATH="${BIN_DIR}:$PATH"
-
-"$BIN_DIR/cursor-mode-model" install || die "二进制已装好，但 hooks 安装失败；请手动运行：cursor-mode-model install"
+"$MAIN" install || die "二进制已装好，但 hooks 安装失败；请手动运行：agent-auto-model install"
 
 case ":${PATH}:" in
   *":${BIN_DIR}:"*)
-    echo "安装完成。运行 cursor-mode-model status 验证。"
+    echo "安装完成。运行 agent-auto-model status 验证。"
     ;;
   *)
     echo ""
@@ -69,4 +93,5 @@ case ":${PATH}:" in
     ;;
 esac
 
-echo "前置条件：需要已安装并登录 Cursor Agent CLI（https://cursor.com/install）。"
+echo "前置条件：Cursor Agent CLI（https://cursor.com/install）和/或 Codex CLI。"
+echo "cursor-mode-model 仍可作为兼容别名使用。"

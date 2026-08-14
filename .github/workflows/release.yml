@@ -47,20 +47,24 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           EXT=""
           if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; fi
-          OUT="cursor-mode-model${EXT}"
+          OUT_MAIN="agent-auto-model${EXT}"
+          OUT_ALIAS="cursor-mode-model${EXT}"
           CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build \
             -ldflags "-s -w -X main.version=${VERSION}" \
-            -o "$OUT" ./cmd/cursor-mode-model
+            -o "$OUT_MAIN" ./cmd/agent-auto-model
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build \
+            -ldflags "-s -w -X main.version=${VERSION}" \
+            -o "$OUT_ALIAS" ./cmd/cursor-mode-model
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            ARCHIVE="cursor-mode-model_${VERSION}_windows_${{ matrix.goarch }}.zip"
+            ARCHIVE="agent-auto-model_${VERSION}_windows_${{ matrix.goarch }}.zip"
             if command -v zip >/dev/null; then
-              zip -q "$ARCHIVE" "$OUT"
+              zip -q "$ARCHIVE" "$OUT_MAIN" "$OUT_ALIAS"
             else
-              powershell -NoProfile -Command "Compress-Archive -Path '$OUT' -DestinationPath '$ARCHIVE'"
+              powershell -NoProfile -Command "Compress-Archive -Path '$OUT_MAIN','$OUT_ALIAS' -DestinationPath '$ARCHIVE'"
             fi
           else
-            ARCHIVE="cursor-mode-model_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
-            tar -czf "$ARCHIVE" "$OUT"
+            ARCHIVE="agent-auto-model_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
+            tar -czf "$ARCHIVE" "$OUT_MAIN" "$OUT_ALIAS"
           fi
           echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
       - name: Upload asset
@@ -94,21 +98,25 @@ jobs:
           SHA="$(curl -fsSL "$ARCHIVE_URL" | sha256sum | awk '{print $1}')"
           WORK="$(mktemp -d)"
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/x0c/homebrew-tap.git" "$WORK/tap"
-          FORMULA="$WORK/tap/Formula/cursor-mode-model.rb"
+          FORMULA="$WORK/tap/Formula/agent-auto-model.rb"
+          ALIAS="$WORK/tap/Formula/cursor-mode-model.rb"
           export VERSION ARCHIVE_URL SHA
           set +e
           python3 scripts/bump-homebrew-formula.py "$FORMULA"
           rc=$?
+          python3 scripts/bump-homebrew-formula.py "$ALIAS"
+          alias_rc=$?
           set -e
-          if [ "$rc" -eq 3 ]; then exit 0; fi
-          if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+          if [ "$rc" -eq 3 ] && [ "$alias_rc" -eq 3 ]; then exit 0; fi
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then exit "$rc"; fi
+          if [ "$alias_rc" -ne 0 ] && [ "$alias_rc" -ne 3 ]; then exit "$alias_rc"; fi
           cd "$WORK/tap"
-          git add Formula/cursor-mode-model.rb
-          if git diff --cached --quiet -- Formula/cursor-mode-model.rb; then
+          git add Formula/agent-auto-model.rb Formula/cursor-mode-model.rb
+          if git diff --cached --quiet -- Formula/agent-auto-model.rb Formula/cursor-mode-model.rb; then
             echo "formula already up to date"
             exit 0
           fi
           git config user.name "x0c"
           git config user.email "x0c@users.noreply.github.com"
-          git commit -m "cursor-mode-model ${VERSION}"
+          git commit -m "agent-auto-model ${VERSION}"
           git push origin main

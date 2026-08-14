@@ -7,12 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
+	stdruntime "runtime"
 	"strings"
 
 	"github.com/x0c/cursor-mode-model/internal/assets"
 	"github.com/x0c/cursor-mode-model/internal/config"
 	"github.com/x0c/cursor-mode-model/internal/paths"
+	aamruntime "github.com/x0c/cursor-mode-model/internal/runtime"
 )
 
 // State 记录本工具自身二进制位置，供包装脚本调用。
@@ -31,8 +32,8 @@ type Result struct {
 	PathHint   string `json:"path_hint,omitempty"`
 }
 
-// Install 启用配置并安装 agent / cursor-agent 包装。
-func Install(home, selfBinary string, dryRun bool) (Result, error) {
+// Install 启用配置并安装包装。runtimeNames 为空表示全部 runtime。
+func Install(home, selfBinary string, dryRun bool, runtimeNames []string) (Result, error) {
 	res := Result{
 		UserConfig: paths.UserConfigFile(home),
 		Register:   paths.RegisterFile(home),
@@ -40,12 +41,23 @@ func Install(home, selfBinary string, dryRun bool) (Result, error) {
 		Enabled:    true,
 		PathHint:   pathExportLine(home),
 	}
+	infos, err := selectedRuntimes(runtimeNames)
+	if err != nil {
+		return res, err
+	}
 	if dryRun {
 		res.Status = "dry_run"
 		return res, nil
 	}
 	cfg := config.Load(home)
 	cfg.Enabled = true
+	if len(runtimeNames) > 0 {
+		for _, info := range infos {
+			rt := cfg.Runtimes[info.Name]
+			rt.Enabled = true
+			cfg.Runtimes[info.Name] = rt
+		}
+	}
 	if err := config.Save(home, cfg); err != nil {
 		return res, err
 	}
@@ -61,7 +73,7 @@ func Install(home, selfBinary string, dryRun bool) (Result, error) {
 	if err := writeState(home, State{SelfBinary: absSelf, Enabled: true}); err != nil {
 		return res, err
 	}
-	if err := writeWrappers(home, absSelf); err != nil {
+	if err := writeWrappers(home, absSelf, infos); err != nil {
 		return res, err
 	}
 	if err := ensurePath(home); err != nil {
@@ -72,28 +84,48 @@ func Install(home, selfBinary string, dryRun bool) (Result, error) {
 }
 
 // Uninstall 关闭自动切换并移除包装（配置文件可保留）。
-func Uninstall(home string, dryRun bool) (Result, error) {
+// runtimeNames 为空时关闭总开关并移除全部包装；否则只关闭并移除指定 runtime。
+func Uninstall(home string, dryRun bool, runtimeNames []string) (Result, error) {
 	res := Result{
 		UserConfig: paths.UserConfigFile(home),
 		Register:   paths.RegisterFile(home),
 		WrapperBin: paths.WrapperBinDir(home),
 		Enabled:    false,
 	}
+	infos, err := selectedRuntimes(runtimeNames)
+	if err != nil {
+		return res, err
+	}
 	if dryRun {
 		res.Status = "dry_run"
 		return res, nil
 	}
 	cfg := config.Load(home)
-	cfg.Enabled = false
+	if len(runtimeNames) == 0 {
+		cfg.Enabled = false
+	} else {
+		for _, info := range infos {
+			rt := cfg.Runtimes[info.Name]
+			rt.Enabled = false
+			cfg.Runtimes[info.Name] = rt
+		}
+		res.Enabled = cfg.Enabled
+	}
 	if err := config.Save(home, cfg); err != nil {
 		return res, err
 	}
 	dir := paths.WrapperBinDir(home)
-	for _, name := range wrapperNames() {
+	for _, name := range wrapperNames(infos) {
 		_ = os.Remove(filepath.Join(dir, name))
 	}
-	_ = removePath(home)
-	st := State{Enabled: false}
+	legacyDir := filepath.Join(paths.LegacyDataDir(home), "bin")
+	for _, name := range wrapperNames(infos) {
+		_ = os.Remove(filepath.Join(legacyDir, name))
+	}
+	if len(runtimeNames) == 0 || !wrappersRemaining(home) {
+		_ = removePath(home)
+	}
+	st := State{Enabled: cfg.Enabled}
 	if prev, err := readState(home); err == nil {
 		st.SelfBinary = prev.SelfBinary
 	}
@@ -102,63 +134,98 @@ func Uninstall(home string, dryRun bool) (Result, error) {
 	return res, nil
 }
 
-func wrapperNames() []string {
-	if runtime.GOOS == "windows" {
-		return []string{"agent.cmd", "cursor-agent.cmd"}
+func selectedRuntimes(names []string) ([]aamruntime.Info, error) {
+	if len(names) == 0 {
+		return aamruntime.All, nil
 	}
-	return []string{"agent", "cursor-agent"}
+	for _, name := range names {
+		if !config.IsValidRuntime(name) {
+			return nil, fmt.Errorf("非法 runtime %q（允许：%s）", name, strings.Join(config.ValidRuntimes, ", "))
+		}
+	}
+	return aamruntime.Filter(names), nil
 }
 
-func writeWrappers(home, selfBinary string) error {
+func wrappersRemaining(home string) bool {
+	dir := paths.WrapperBinDir(home)
+	for _, name := range wrapperNames(nil) {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func wrapperNames(runtimes []aamruntime.Info) []string {
+	if len(runtimes) == 0 {
+		runtimes = aamruntime.All
+	}
+	var names []string
+	for _, rt := range runtimes {
+		for _, w := range rt.WrapperNames {
+			if stdruntime.GOOS == "windows" {
+				names = append(names, w+".cmd")
+			} else {
+				names = append(names, w)
+			}
+		}
+	}
+	return names
+}
+
+func writeWrappers(home, selfBinary string, runtimes []aamruntime.Info) error {
+	if len(runtimes) == 0 {
+		runtimes = aamruntime.All
+	}
 	dir := paths.WrapperBinDir(home)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	if runtime.GOOS == "windows" {
-		for _, name := range []string{"agent", "cursor-agent"} {
-			body := fmt.Sprintf("@echo off\r\nREM 由 cursor-mode-model install 生成\r\n%q exec --invoked-as %s -- %%*\r\n", selfBinary, name)
-			path := filepath.Join(dir, name+".cmd")
-			if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+	for _, rt := range runtimes {
+		for _, name := range rt.WrapperNames {
+			if err := writeWrapper(dir, selfBinary, name); err != nil {
 				return err
 			}
-		}
-		return nil
-	}
-	for _, name := range []string{"agent", "cursor-agent"} {
-		body := fmt.Sprintf(`#!/bin/sh
-# 由 cursor-mode-model install 生成：注入 Mode→模型预加载后转调官方 Agent。
-exec %q exec --invoked-as %q -- "$@"
-`, selfBinary, name)
-		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
-			return err
 		}
 	}
 	return nil
 }
 
+func writeWrapper(dir, selfBinary, name string) error {
+	if stdruntime.GOOS == "windows" {
+		body := fmt.Sprintf("@echo off\r\nREM 由 agent-auto-model install 生成\r\n%q exec --invoked-as %s -- %%*\r\n", selfBinary, name)
+		return os.WriteFile(filepath.Join(dir, name+".cmd"), []byte(body), 0o755)
+	}
+	body := fmt.Sprintf(`#!/bin/sh
+# 由 agent-auto-model install 生成：注入 Mode→模型挂钩后转调官方 CLI。
+exec %q exec --invoked-as %q -- "$@"
+`, selfBinary, name)
+	return os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755)
+}
+
 func pathExportLine(home string) string {
-	if runtime.GOOS == "windows" {
+	if stdruntime.GOOS == "windows" {
 		return paths.WrapperBinDir(home)
 	}
 	return fmt.Sprintf(`export PATH=%q:$PATH`, paths.WrapperBinDir(home))
 }
 
 func ensurePath(home string) error {
-	if runtime.GOOS == "windows" {
+	if stdruntime.GOOS == "windows" {
 		return ensureWindowsUserPath(paths.WrapperBinDir(home))
 	}
 	return ensureUnixPathSnippet(home)
 }
 
 func removePath(home string) error {
-	if runtime.GOOS == "windows" {
+	if stdruntime.GOOS == "windows" {
 		return removeWindowsUserPath(paths.WrapperBinDir(home))
 	}
 	return removeUnixPathSnippets(home)
 }
 
-const pathMarker = "# cursor-mode-model PATH"
+const pathMarker = "# agent-auto-model PATH"
+const legacyPathMarker = "# cursor-mode-model PATH"
 
 func ensureUnixPathSnippet(home string) error {
 	snippetDir := filepath.Join(paths.DataDir(home), "shell")
@@ -166,12 +233,14 @@ func ensureUnixPathSnippet(home string) error {
 		return err
 	}
 	snippet := filepath.Join(snippetDir, "path.sh")
-	body := "# cursor-mode-model：让包装后的 agent 优先于官方入口\n" + pathExportLine(home) + "\n"
+	body := "# agent-auto-model：让包装后的 CLI 优先于官方入口\n" + pathExportLine(home) + "\n"
 	if err := os.WriteFile(snippet, []byte(body), 0o644); err != nil {
 		return err
 	}
 	line := fmt.Sprintf(`[ -f %q ] && . %q`, snippet, snippet)
-	for _, rcName := range []string{".zshrc", ".bashrc", ".zprofile"} {
+	// 含 .profile：Ubuntu login shell 会在 source .bashrc 之后再把 ~/.local/bin
+	// 顶回 PATH 最前；必须在 .profile 末尾再 source 一次，包装器才能生效。
+	for _, rcName := range []string{".zshrc", ".bashrc", ".zprofile", ".profile"} {
 		rc := filepath.Join(home, rcName)
 		data, err := os.ReadFile(rc)
 		if err != nil {
@@ -180,8 +249,13 @@ func ensureUnixPathSnippet(home string) error {
 			}
 			return err
 		}
-		text := string(data)
+		text := stripPathBlock(string(data))
 		if strings.Contains(text, pathMarker) {
+			if text != string(data) {
+				if err := os.WriteFile(rc, []byte(text), 0o644); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		add := "\n" + pathMarker + "\n" + line + "\n"
@@ -195,7 +269,7 @@ func ensureUnixPathSnippet(home string) error {
 func removeUnixPathSnippets(home string) error {
 	snippet := filepath.Join(paths.DataDir(home), "shell", "path.sh")
 	_ = os.Remove(snippet)
-	for _, rcName := range []string{".zshrc", ".bashrc", ".zprofile"} {
+	for _, rcName := range []string{".zshrc", ".bashrc", ".zprofile", ".profile"} {
 		rc := filepath.Join(home, rcName)
 		data, err := os.ReadFile(rc)
 		if err != nil {
@@ -221,13 +295,13 @@ func stripPathBlock(text string) string {
 	skipNext := false
 	for i := 0; i < len(lines); i++ {
 		line := lines[i]
-		if strings.TrimSpace(line) == pathMarker {
+		if strings.TrimSpace(line) == pathMarker || strings.TrimSpace(line) == legacyPathMarker {
 			skipNext = true
 			continue
 		}
 		if skipNext {
 			skipNext = false
-			if strings.Contains(line, "cursor-mode-model") && strings.Contains(line, "path.sh") {
+			if (strings.Contains(line, "agent-auto-model") || strings.Contains(line, "cursor-mode-model")) && strings.Contains(line, "path.sh") {
 				continue
 			}
 			out = append(out, line)

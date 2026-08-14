@@ -5,6 +5,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 process.env.CURSOR_MODE_MODEL_UNIT_TEST = '1';
+delete process.env.AGENT_AUTO_MODEL_CONFIG;
+delete process.env.CURSOR_MODE_MODEL_CONFIG;
+delete process.env.AGENT_AUTO_MODEL;
+delete process.env.CURSOR_MODE_MODEL;
 
 const {
   currentMode,
@@ -15,6 +19,10 @@ const {
   isGlobSpec,
   normalizeModelId,
   modelsEquivalent,
+  specWantsFast,
+  applySpecParameterIntent,
+  selectionMatchesSpec,
+  forceSelectedModel,
   patchSource,
   shouldPatchUrl,
   anchors,
@@ -115,6 +123,59 @@ test('normalizeModelId：thinking-high 别名与 mapModelToParameterizedSelectio
   assert.equal(normalizeModelId(mgr, 'claude-opus-5-thinking-high'), 'claude-opus-5');
   assert.equal(modelsEquivalent(mgr, 'claude-opus-5-thinking-high', 'claude-opus-5'), true);
   assert.equal(modelsEquivalent(mgr, 'cursor-grok-4.5-high-fast', 'claude-opus-5'), false);
+});
+
+test('通配符 *-high 不含 fast；*-high-fast 才要 fast', () => {
+  assert.equal(specWantsFast('cursor-grok-*-high'), false);
+  assert.equal(specWantsFast('cursor-grok-4.6-high'), false);
+  assert.equal(specWantsFast('cursor-grok-*-high-fast'), true);
+  assert.equal(specWantsFast('cursor-grok-4.6-high-fast'), true);
+  const noFast = applySpecParameterIntent('cursor-grok-4.6-high', [
+    { id: 'effort', value: 'high' },
+    { id: 'fast', value: 'true' },
+  ]);
+  assert.equal(
+    noFast.find((p) => p.id === 'fast').value,
+    'false',
+  );
+  const yesFast = applySpecParameterIntent('cursor-grok-4.6-high-fast', [
+    { id: 'effort', value: 'high' },
+    { id: 'fast', value: 'false' },
+  ]);
+  assert.equal(
+    yesFast.find((p) => p.id === 'fast').value,
+    'true',
+  );
+});
+
+test('selectionMatchesSpec：同 grok-4.6 但 fast 不同则不匹配', () => {
+  const mgr = {
+    currentSelectedModel: {
+      modelId: 'grok-4.6',
+      parameters: [
+        { id: 'effort', value: 'high' },
+        { id: 'fast', value: 'true' },
+      ],
+    },
+    currentModel: { modelId: 'grok-4.6' },
+    mapModelToParameterizedSelection(id) {
+      if (String(id).startsWith('cursor-grok-4.6') || id === 'grok-4.6') {
+        return {
+          modelId: 'grok-4.6',
+          parameters: [
+            { id: 'effort', value: 'high' },
+            { id: 'fast', value: 'true' },
+          ],
+        };
+      }
+      return null;
+    },
+  };
+  globalThis.__cursorModeModelConfig = {};
+  assert.equal(selectionMatchesSpec(mgr, 'cursor-grok-4.6-high'), false);
+  forceSelectedModel(mgr, 'cursor-grok-4.6-high');
+  assert.equal(mgr.currentSelectedModel.parameters.find((p) => p.id === 'fast').value, 'false');
+  assert.equal(selectionMatchesSpec(mgr, 'cursor-grok-4.6-high'), true);
 });
 
 test('patchSource 命中全部锚点', () => {

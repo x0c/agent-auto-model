@@ -22,7 +22,7 @@ func TestMaybeCheckAndUpdateInstallsNewVersion(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 
-	execPath := filepath.Join(home, "cursor-mode-model")
+	execPath := filepath.Join(home, "agent-auto-model")
 	if runtime.GOOS == "windows" {
 		execPath += ".exe"
 	}
@@ -90,7 +90,7 @@ func TestMaybeCheckAndUpdateHonorsCooldown(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 
-	execPath := filepath.Join(home, "cursor-mode-model")
+	execPath := filepath.Join(home, "agent-auto-model")
 	if err := os.WriteFile(execPath, []byte("same"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -178,14 +178,14 @@ func assetNameFor(version string) string {
 	if runtime.GOOS == "windows" {
 		ext = ".zip"
 	}
-	return "cursor-mode-model_" + version + "_" + runtime.GOOS + "_" + goArchName(runtime.GOARCH) + ext
+	return "agent-auto-model_" + version + "_" + runtime.GOOS + "_" + goArchName(runtime.GOARCH) + ext
 }
 
 func binaryName() string {
 	if runtime.GOOS == "windows" {
-		return "cursor-mode-model.exe"
+		return "agent-auto-model.exe"
 	}
-	return "cursor-mode-model"
+	return "agent-auto-model"
 }
 
 func buildTarGz(t *testing.T, name string, body []byte) []byte {

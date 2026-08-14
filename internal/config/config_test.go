@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -25,7 +26,7 @@ func TestDefaultAndSaveLoad(t *testing.T) {
 	if got.AutoUpdate.Channel != DefaultAutoUpdateChannel {
 		t.Fatalf("channel=%s", got.AutoUpdate.Channel)
 	}
-	rt := filepath.Join(home, ".local", "share", "cursor-mode-model", "assets", "config.json")
+	rt := filepath.Join(home, ".local", "share", "agent-auto-model", "assets", "config.json")
 	if _, err := os.Stat(rt); err != nil {
 		t.Fatalf("运行时配置未同步: %v", err)
 	}
@@ -33,7 +34,9 @@ func TestDefaultAndSaveLoad(t *testing.T) {
 
 func TestLoadMissingEnabledDefaultsTrue(t *testing.T) {
 	home := t.TempDir()
-	path := filepath.Join(home, ".config", "cursor-mode-model", "config.json")
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+	path := filepath.Join(home, ".config", "agent-auto-model", "config.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -98,5 +101,92 @@ func TestSetManyEnableStrictReset(t *testing.T) {
 	}
 	if cfg.Models["plan"] != DefaultModels["plan"] {
 		t.Fatal(cfg.Models["plan"])
+	}
+	if cfg.Runtimes[RuntimeCodex].Models["plan"] != DefaultCodexModels["plan"] {
+		t.Fatalf("codex plan=%s", cfg.Runtimes[RuntimeCodex].Models["plan"])
+	}
+}
+
+func TestLoadV1PromotesToCursorRuntime(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+	path := filepath.Join(home, ".config", "agent-auto-model", "config.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"version":1,"enabled":true,"models":{"plan":"opus-x","default":"grok-y"}}`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := Load(home)
+	if got.Runtimes[RuntimeCursor].Models["plan"] != "opus-x" {
+		t.Fatalf("%#v", got.Runtimes[RuntimeCursor].Models)
+	}
+	if got.Runtimes[RuntimeCodex].Models["plan"] != DefaultCodexModels["plan"] {
+		t.Fatalf("codex defaults lost: %#v", got.Runtimes[RuntimeCodex].Models)
+	}
+	rewritten, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rewritten), `"version": 2`) {
+		t.Fatalf("v1 应写回 v2: %s", rewritten)
+	}
+	if !strings.Contains(string(rewritten), `"codex"`) {
+		t.Fatalf("写回应含 codex runtime: %s", rewritten)
+	}
+}
+
+func TestLoadMigratesLegacyConfigDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
+	legacy := filepath.Join(home, "cfg", "cursor-mode-model", "config.json")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"version":1,"enabled":true,"models":{"plan":"opus-legacy"}}`
+	if err := os.WriteFile(legacy, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := Load(home)
+	if got.Runtimes[RuntimeCursor].Models["plan"] != "opus-legacy" {
+		t.Fatalf("%#v", got.Runtimes[RuntimeCursor].Models)
+	}
+	if _, err := os.Stat(filepath.Join(home, "cfg", "agent-auto-model", "config.json")); err != nil {
+		t.Fatalf("应迁移到新配置目录: %v", err)
+	}
+}
+
+func TestSetRuntimeModelRejectsBadEffort(t *testing.T) {
+	home := t.TempDir()
+	if _, err := SetRuntimeModel(home, RuntimeCodex, "plan", "gpt-5.6-sol:nope"); err == nil {
+		t.Fatal("非法 effort 应报错")
+	}
+}
+
+func TestParseTarget(t *testing.T) {
+	rt, mode, err := ParseTarget("codex.plan")
+	if err != nil || rt != RuntimeCodex || mode != "plan" {
+		t.Fatalf("%s %s %v", rt, mode, err)
+	}
+	rt, mode, err = ParseTarget("ask")
+	if err != nil || rt != RuntimeCursor || mode != "search" {
+		t.Fatalf("%s %s %v", rt, mode, err)
+	}
+	if _, _, err := ParseTarget("codex.search"); err == nil {
+		t.Fatal("codex.search 应非法")
+	}
+}
+
+func TestSetRuntimeModel(t *testing.T) {
+	home := t.TempDir()
+	cfg, err := SetRuntimeModel(home, RuntimeCodex, "plan", "gpt-5.6-sol:high")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Runtimes[RuntimeCodex].Models["plan"] != "gpt-5.6-sol:high" {
+		t.Fatalf("%#v", cfg.Runtimes[RuntimeCodex].Models)
 	}
 }

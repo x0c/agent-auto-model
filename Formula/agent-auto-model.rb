@@ -1,6 +1,6 @@
-# Deprecated alias formula. Prefer agent-auto-model.
-class CursorModeModel < Formula
-  desc "Deprecated alias of agent-auto-model"
+# 仓库内参考配方；权威发布以 x0c/tap 为准。
+class AgentAutoModel < Formula
+  desc "Auto-switch agent CLI models by Mode (Cursor Agent and Codex)"
   homepage "https://github.com/x0c/cursor-mode-model"
   url "https://github.com/x0c/cursor-mode-model/archive/refs/tags/v1.0.0.tar.gz"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
@@ -16,13 +16,15 @@ class CursorModeModel < Formula
 
   def caveats
     <<~EOS
-      cursor-mode-model is now agent-auto-model. This formula still installs both names.
-      After install:
+      After install, enable PATH wrappers:
         agent-auto-model install
+      Requires Cursor Agent CLI and/or Codex CLI.
+      cursor-mode-model remains a compatibility alias.
     EOS
   end
 
   test do
+    assert_match version.to_s, shell_output("#{bin}/agent-auto-model version")
     assert_match version.to_s, shell_output("#{bin}/cursor-mode-model version")
   end
 end

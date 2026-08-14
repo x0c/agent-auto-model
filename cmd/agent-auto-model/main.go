@@ -6,7 +6,7 @@ import (
 	"github.com/x0c/cursor-mode-model/internal/app"
 )
 
-// 由 -ldflags 注入。过渡别名：cursor-mode-model → agent-auto-model。
+// 由 -ldflags 注入。
 var version = "1.0.0"
 
 func main() {

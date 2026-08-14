@@ -10,15 +10,20 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const unitTest = String(process.env.CURSOR_MODE_MODEL_UNIT_TEST || '').trim() === '1';
-const disabled = String(process.env.CURSOR_MODE_MODEL || '1').trim() === '0';
-const locked = Boolean(process.env.CURSOR_MODE_MODEL_LOCK);
+const unitTest = String(process.env.CURSOR_MODE_MODEL_UNIT_TEST || process.env.AGENT_AUTO_MODEL_UNIT_TEST || '').trim() === '1';
+const disabled =
+  String(process.env.AGENT_AUTO_MODEL || process.env.CURSOR_MODE_MODEL || '1').trim() === '0';
+const locked = Boolean(process.env.AGENT_AUTO_MODEL_LOCK || process.env.CURSOR_MODE_MODEL_LOCK);
 const DECISIONS_LOG = join(here, 'decisions.log');
 const DECISIONS_MAX_BYTES = 1024 * 1024;
 const ALERT_COOLDOWN_MS = 8000;
 
 function debugLog(obj) {
-  if (String(process.env.CURSOR_MODE_MODEL_DEBUG || '').trim() !== '1') return;
+  if (
+    String(process.env.AGENT_AUTO_MODEL_DEBUG || process.env.CURSOR_MODE_MODEL_DEBUG || '').trim() !==
+    '1'
+  )
+    return;
   try {
     appendFileSync(join(here, 'sync.log'), JSON.stringify({ t: Date.now(), ...obj }) + '\n');
   } catch {
@@ -36,13 +41,14 @@ function loadJSON(path) {
 }
 
 function loadConfig() {
-  const fromEnv = process.env.CURSOR_MODE_MODEL_CONFIG;
+  const fromEnv =
+    process.env.AGENT_AUTO_MODEL_CONFIG || process.env.CURSOR_MODE_MODEL_CONFIG;
   const candidates = [];
   if (fromEnv) candidates.push(fromEnv);
   candidates.push(join(here, 'config.json'));
   for (const p of candidates) {
     const raw = loadJSON(p);
-    if (raw) return raw;
+    if (raw) return normalizeConfig(raw);
   }
   return {
     enabled: true,
@@ -56,6 +62,19 @@ function loadConfig() {
   };
 }
 
+function normalizeConfig(raw) {
+  if (!raw || typeof raw !== 'object') return raw;
+  const cursor = raw.runtimes && raw.runtimes.cursor;
+  if (cursor && cursor.models && typeof cursor.models === 'object') {
+    return {
+      ...raw,
+      enabled: raw.enabled !== false && cursor.enabled !== false,
+      models: { ...raw.models, ...cursor.models },
+    };
+  }
+  return raw;
+}
+
 function loadAnchors() {
   const raw = loadJSON(join(here, 'anchors.json'));
   if (raw && typeof raw === 'object') return raw;
@@ -63,12 +82,12 @@ function loadAnchors() {
   return {
     setCurrentModel: 'setCurrentModel(e,t){return p(this,void 0,void 0,(function*(){',
     setCurrentModelWithParameters:
-      'setCurrentModelWithParameters(e,t,r){return p(this,void 0,void 0,(function*(){',
+      'setCurrentModelWithParameters(e,t,n){return p(this,void 0,void 0,(function*(){',
     setModelFromStoredId: 'setModelFromStoredId(e,t){return p(this,void 0,void 0,(function*(){',
     getCurrentModel: 'getCurrentModel(){return this.deriveCurrentModelDetails()',
     setMetadata: 'setMetadata(e,t){this.metadataStore.set(e,t)}',
     buildRequestedModel:
-      'buildRequestedModel(){var e,t,r,n;const o=this.currentSelectedModel;',
+      'buildRequestedModel(){var e,t,n,r;const o=this.currentSelectedModel;',
   };
 }
 
@@ -249,13 +268,144 @@ function normalizeModelId(mgr, id) {
   // 常见别名：*-thinking-high → 参数化基名（无 mgr 时也要生效）
   const thinking = raw.match(/^(claude-opus-\d+(?:\.\d+)?)-thinking-high$/);
   if (thinking) return thinking[1];
+  // cursor-grok-4.6-high / -high-fast → grok-4.6（无 mgr 时的兜底）
+  const grok = raw.match(/^cursor-(grok-\d+(?:\.\d+)?)(?:-high)?(?:-fast)?$/i);
+  if (grok) return grok[1].toLowerCase();
   return raw;
+}
+
+/** 配置/别名是否要求 Fast。`cursor-grok-*-high` 不含 fast 段 → false。 */
+function specWantsFast(spec) {
+  const s = String(spec || '').toLowerCase();
+  if (!s) return false;
+  if (s.includes('high-fast')) return true;
+  return /(^|[-_*])fast($|[-_*])/.test(s);
+}
+
+function copyParams(params) {
+  return (Array.isArray(params) ? params : [])
+    .filter((p) => p && p.id != null)
+    .map((p) => ({ id: String(p.id), value: String(p.value) }));
+}
+
+function paramValue(params, id) {
+  const hit = (params || []).find((p) => p && String(p.id) === id);
+  return hit == null ? undefined : String(hit.value);
+}
+
+function upsertParam(params, id, value) {
+  const out = copyParams(params);
+  const idx = out.findIndex((p) => p.id === id);
+  const entry = { id, value: String(value) };
+  if (idx >= 0) out[idx] = entry;
+  else out.push(entry);
+  return out;
+}
+
+function isTruthyParam(v) {
+  return v === 'true' || v === '1' || v === 'yes';
+}
+
+/**
+ * 按通配符/别名意图覆盖参数。Grok 4.6 起 high 与 high-fast 同为 modelId=grok-4.6，
+ * 只靠 fast 参数区分；官方 getParametersForModel 会沿用上次选择/已存配置里的 fast=true。
+ */
+function applySpecParameterIntent(spec, params) {
+  let out = copyParams(params);
+  const s = String(spec || '');
+  if (/high/i.test(s) && !/thinking-high/i.test(s)) {
+    // cursor-grok-*-high* → effort=high（若已有 effort 或规格含 high）
+    if (out.some((p) => p.id === 'effort') || /grok/i.test(s)) {
+      out = upsertParam(out, 'effort', 'high');
+    }
+  }
+  if (/grok/i.test(s) || out.some((p) => p.id === 'fast') || /fast/i.test(s)) {
+    out = upsertParam(out, 'fast', specWantsFast(s) ? 'true' : 'false');
+  }
+  return out;
+}
+
+function mapSelection(mgr, spec) {
+  if (!mgr || !spec) return null;
+  const cfg = globalThis.__cursorModeModelConfig;
+  try {
+    if (typeof mgr.mapModelToParameterizedSelection === 'function' && cfg) {
+      const mapped = mgr.mapModelToParameterizedSelection(String(spec), cfg);
+      if (mapped && mapped.modelId) {
+        return {
+          modelId: String(mapped.modelId),
+          parameters: applySpecParameterIntent(spec, mapped.parameters),
+        };
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  const modelId = normalizeModelId(mgr, spec);
+  if (!modelId) return null;
+  let parameters = [];
+  try {
+    if (typeof mgr.getParametersForModel === 'function' && cfg) {
+      // 不要在「当前已是同 base id」时直接信任 getParametersForModel：
+      // 它会原样返回 currentSelectedModel.parameters（常含 fast=true）。
+      const curId =
+        mgr.currentSelectedModel && mgr.currentSelectedModel.modelId
+          ? String(mgr.currentSelectedModel.modelId)
+          : null;
+      if (curId !== modelId) {
+        parameters = mgr.getParametersForModel(modelId, cfg) || [];
+      } else if (typeof mgr.getSavedModelParameters === 'function') {
+        parameters = mgr.getSavedModelParameters(modelId, cfg) || [];
+      } else {
+        const map = mgr.parameterizedModelMap;
+        const entry = map && typeof map.get === 'function' ? map.get(modelId) : null;
+        const variants = entry && Array.isArray(entry.variants) ? entry.variants : [];
+        const wantsFast = specWantsFast(spec);
+        const variant =
+          variants.find((v) => {
+            const vals = copyParams(v && v.parameterValues);
+            return isTruthyParam(paramValue(vals, 'fast')) === wantsFast;
+          }) ||
+          variants.find((v) => v && v.isDefaultNonMaxConfig) ||
+          variants[0];
+        parameters = variant ? variant.parameterValues || [] : [];
+      }
+    }
+  } catch {
+    parameters = [];
+  }
+  return {
+    modelId,
+    parameters: applySpecParameterIntent(spec, parameters),
+  };
 }
 
 function modelsEquivalent(mgr, a, b) {
   if (!a || !b) return a === b;
   if (a === b) return true;
   return normalizeModelId(mgr, a) === normalizeModelId(mgr, b);
+}
+
+/** 当前选择是否满足配置规格（含 fast 参数意图）。 */
+function selectionMatchesSpec(mgr, spec) {
+  if (!mgr || !spec) return false;
+  const want = mapSelection(mgr, spec);
+  const curId = managerModelId(mgr);
+  if (!want || !want.modelId || !curId) return false;
+  if (!modelsEquivalent(mgr, curId, want.modelId)) return false;
+  const curParams =
+    (mgr.currentSelectedModel && mgr.currentSelectedModel.parameters) || [];
+  const wantFast = paramValue(want.parameters, 'fast');
+  if (wantFast != null) {
+    const curFast = paramValue(curParams, 'fast');
+    if (isTruthyParam(wantFast) !== isTruthyParam(curFast)) return false;
+  }
+  const wantEffort = paramValue(want.parameters, 'effort');
+  if (wantEffort != null) {
+    const curEffort = paramValue(curParams, 'effort');
+    if (curEffort != null && curEffort !== wantEffort) return false;
+  }
+  return true;
 }
 
 function managerModelId(mgr) {
@@ -423,38 +573,12 @@ function writeLastUsedModel(modelId) {
 
 function forceSelectedModel(mgr, modelId) {
   if (!mgr || !modelId) return;
-  const cfg = globalThis.__cursorModeModelConfig;
-  let targetId = modelId;
-  let parameters = [];
-  try {
-    if (typeof mgr.mapModelToParameterizedSelection === 'function' && cfg) {
-      const mapped = mgr.mapModelToParameterizedSelection(modelId, cfg);
-      if (mapped && mapped.modelId) {
-        targetId = mapped.modelId;
-        if (Array.isArray(mapped.parameters)) parameters = mapped.parameters;
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  try {
-    if (
-      parameters.length === 0 &&
-      typeof mgr.getParametersForModel === 'function' &&
-      cfg
-    ) {
-      parameters = mgr.getParametersForModel(targetId, cfg) || [];
-    } else if (
-      parameters.length === 0 &&
-      mgr.currentSelectedModel &&
-      modelsEquivalent(mgr, mgr.currentSelectedModel.modelId, targetId) &&
-      Array.isArray(mgr.currentSelectedModel.parameters)
-    ) {
-      parameters = mgr.currentSelectedModel.parameters;
-    }
-  } catch {
-    parameters = parameters || [];
-  }
+  const want = mapSelection(mgr, modelId) || {
+    modelId: normalizeModelId(mgr, modelId) || modelId,
+    parameters: applySpecParameterIntent(modelId, []),
+  };
+  const targetId = want.modelId;
+  const parameters = want.parameters || [];
   mgr.currentSelectedModel = { modelId: targetId, parameters };
   const prev = mgr.currentModel && typeof mgr.currentModel === 'object' ? mgr.currentModel : {};
   mgr.currentModel = Object.assign({}, prev, {
@@ -498,22 +622,27 @@ function beforeBuildRequested(mgr) {
   const forced = resolveModel(mode);
   const pattern = models[String(mode)] || models.default || null;
   const current = managerModelId(mgr);
+  const curParams =
+    (mgr && mgr.currentSelectedModel && mgr.currentSelectedModel.parameters) || [];
   debugLog({
     ev: 'before_build',
     mode,
     forcedModel: forced,
     pattern,
     managerModel: current,
+    managerFast: paramValue(curParams, 'fast'),
     normalizedForced: normalizeModelId(mgr, forced),
     normalizedCurrent: normalizeModelId(mgr, current),
+    matches: selectionMatchesSpec(mgr, forced),
   });
   if (!forced || !mgr) return undefined;
-  if (modelsEquivalent(mgr, current, forced)) {
+  if (selectionMatchesSpec(mgr, forced)) {
     decisionLog({
       ev: 'ok',
       mode,
       expected: forced,
       actual: current,
+      fast: paramValue(curParams, 'fast'),
       corrected: false,
     });
     return undefined;
@@ -525,6 +654,10 @@ function beforeBuildRequested(mgr) {
     expected: forced,
     actualBefore: current,
     actualAfter: managerModelId(mgr),
+    fastAfter: paramValue(
+      (mgr.currentSelectedModel && mgr.currentSelectedModel.parameters) || [],
+      'fast',
+    ),
     appliedId,
   });
   debugLog({
@@ -536,7 +669,7 @@ function beforeBuildRequested(mgr) {
   });
   void applyModel(forced, { reason: 'before_build', gen: bumpGen() });
   // strict：若纠正后仍不等价，抛错阻断发送
-  if (strict && !modelsEquivalent(mgr, managerModelId(mgr), forced)) {
+  if (strict && !selectionMatchesSpec(mgr, forced)) {
     const msg =
       '严格模式：无法将请求模型纠正为 Mode 对应值（mode=' +
       mode +
@@ -549,7 +682,7 @@ function beforeBuildRequested(mgr) {
     decisionLog({ ev: 'strict_block', mode, expected: forced, actual: managerModelId(mgr) });
     throw new Error('[cursor-mode-model] ' + msg);
   }
-  if (!modelsEquivalent(mgr, managerModelId(mgr), forced)) {
+  if (!selectionMatchesSpec(mgr, forced)) {
     alertOnce(
       '发送前纠正失败：mode=' +
         mode +
@@ -589,7 +722,7 @@ function scheduleRestoreGuard(reason) {
         managerModel: current,
       });
       if (!target || !mgr) return;
-      if (!modelsEquivalent(mgr, current, target)) {
+      if (!selectionMatchesSpec(mgr, target)) {
         void applyModel(target, { reason: 'restore_guard', delay, gen: bumpGen() });
       }
     }, delay);
@@ -619,9 +752,11 @@ async function applyModel(modelId, opts) {
     (mgr && mgr.configProvider && typeof mgr.configProvider.get === 'function'
       ? mgr.configProvider
       : null);
+  const want = mapSelection(mgr, modelId);
   debugLog({
     ev: 'apply',
     modelId,
+    want,
     reason: options.reason || 'unspecified',
     gen,
     hasMgr: !!mgr,
@@ -632,7 +767,21 @@ async function applyModel(modelId, opts) {
   try {
     let applied = false;
     let via = '';
-    if (typeof mgr.setModelFromStoredId === 'function' && cfg) {
+    // 优先带参设置：Grok high 与 high-fast 同 modelId，必须显式传 fast。
+    if (want && typeof mgr.setCurrentModelWithParameters === 'function' && cfg) {
+      await mgr.setCurrentModelWithParameters(want.modelId, want.parameters, cfg);
+      via = 'setCurrentModelWithParameters';
+      applied = true;
+      debugLog({
+        ev: 'apply_result',
+        via,
+        ok: true,
+        gen,
+        modelId,
+        parameters: want.parameters,
+      });
+    }
+    if (!applied && typeof mgr.setModelFromStoredId === 'function' && cfg) {
       const ok = await mgr.setModelFromStoredId(modelId, cfg);
       via = 'setModelFromStoredId';
       debugLog({ ev: 'apply_result', via, ok, gen, modelId });
@@ -642,26 +791,8 @@ async function applyModel(modelId, opts) {
         debugLog({ ev: 'apply_rejected', via, modelId, gen });
       }
     }
-    if (!applied && typeof mgr.setCurrentModelWithParameters === 'function' && cfg) {
-      let params = [];
-      try {
-        if (typeof mgr.getParametersForModel === 'function') {
-          params = mgr.getParametersForModel(normalizeModelId(mgr, modelId), cfg) || [];
-        }
-      } catch {
-        params = [];
-      }
-      await mgr.setCurrentModelWithParameters(
-        normalizeModelId(mgr, modelId),
-        params,
-        cfg,
-      );
-      via = 'setCurrentModelWithParameters';
-      applied = true;
-      debugLog({ ev: 'apply_result', via, ok: true, gen, modelId });
-    }
     if (!applied && typeof mgr.setCurrentModel === 'function' && cfg) {
-      const nid = normalizeModelId(mgr, modelId);
+      const nid = (want && want.modelId) || normalizeModelId(mgr, modelId);
       await mgr.setCurrentModel(
         {
           modelId: nid,
@@ -685,18 +816,23 @@ async function applyModel(modelId, opts) {
       decisionLog({ ev: 'apply_failed', modelId, reason: 'no_api' });
       return false;
     }
+    // 官方 API 可能仍沿用已存 fast=true；始终按规格意图再写一次内存选择。
+    forceSelectedModel(mgr, modelId);
     const verified = managerModelId(mgr);
-    const match = modelsEquivalent(mgr, verified, modelId);
+    const match = selectionMatchesSpec(mgr, modelId);
     debugLog({
       ev: 'apply_verify',
       modelId,
       verified,
       match,
+      fast: paramValue(
+        (mgr.currentSelectedModel && mgr.currentSelectedModel.parameters) || [],
+        'fast',
+      ),
       via,
       gen,
     });
     if (!match) {
-      forceSelectedModel(mgr, modelId);
       alertOnce('切换后校验不一致，已强制内存模型: ' + verified + ' -> ' + modelId);
     } else {
       try {
@@ -711,7 +847,11 @@ async function applyModel(modelId, opts) {
       reason: options.reason || 'unspecified',
       expected: modelId,
       actual: managerModelId(mgr),
-      match: modelsEquivalent(mgr, managerModelId(mgr), modelId),
+      fast: paramValue(
+        (mgr.currentSelectedModel && mgr.currentSelectedModel.parameters) || [],
+        'fast',
+      ),
+      match: selectionMatchesSpec(mgr, modelId),
       via,
     });
     return true;
@@ -761,14 +901,15 @@ function syncMode(key, value, opts) {
 const stashThis = 'globalThis.__cursorModeModelStash&&globalThis.__cursorModeModelStash(this)';
 const stashThisCfg =
   'globalThis.__cursorModeModelStash&&globalThis.__cursorModeModelStash(this,t)';
-const stashThisCfgR =
-  'globalThis.__cursorModeModelStash&&globalThis.__cursorModeModelStash(this,r)';
+// Agent 2026.08.11+：第三参由 r 变为 n（与 anchors.json 同步）
+const stashThisCfgN =
+  'globalThis.__cursorModeModelStash&&globalThis.__cursorModeModelStash(this,n)';
 
 const PATCH_SET_CURRENT =
   'setCurrentModel(e,t){return ' + stashThisCfg + ',p(this,void 0,void 0,(function*(){';
 const PATCH_SET_PARAMS =
-  'setCurrentModelWithParameters(e,t,r){return ' +
-  stashThisCfgR +
+  'setCurrentModelWithParameters(e,t,n){return ' +
+  stashThisCfgN +
   ',p(this,void 0,void 0,(function*(){';
 const PATCH_SET_FROM_STORED =
   'setModelFromStoredId(e,t){return ' +
@@ -784,7 +925,7 @@ const stashStoreCall =
 const PATCH_SET_METADATA =
   'setMetadata(e,t){' + stashStoreCall + 'this.metadataStore.set(e,t);' + syncCall + '}';
 const PATCH_BUILD_REQUESTED =
-  'buildRequestedModel(){typeof globalThis.__cursorModeModelBeforeBuild==="function"&&globalThis.__cursorModeModelBeforeBuild(this);var e,t,r,n;const o=this.currentSelectedModel;';
+  'buildRequestedModel(){typeof globalThis.__cursorModeModelBeforeBuild==="function"&&globalThis.__cursorModeModelBeforeBuild(this);var e,t,n,r;const o=this.currentSelectedModel;';
 
 function patchSource(source) {
   if (typeof source !== 'string') return { source, hits: 0 };
@@ -816,7 +957,9 @@ function patchSource(source) {
 
 function shouldPatchUrl(url) {
   if (!url || url.startsWith('node:')) return false;
-  if (url.includes('cursor-mode-model') && url.includes('register.mjs')) return false;
+  if (url.includes('register.mjs') && (url.includes('agent-auto-model') || url.includes('cursor-mode-model'))) {
+    return false;
+  }
   if (!url.includes('cursor-agent') && !url.includes('/.local/share/cursor-agent/')) {
     return false;
   }
@@ -839,6 +982,10 @@ export {
   listAvailableModelIds,
   normalizeModelId,
   modelsEquivalent,
+  specWantsFast,
+  applySpecParameterIntent,
+  selectionMatchesSpec,
+  mapSelection,
   patchSource,
   shouldPatchUrl,
   forceSelectedModel,

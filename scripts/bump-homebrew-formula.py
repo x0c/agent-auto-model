@@ -7,8 +7,8 @@ import re
 import sys
 from pathlib import Path
 
-FORMULA_TEMPLATE = '''class CursorModeModel < Formula
-  desc "Auto-switch Cursor Agent CLI models by Mode"
+AGENT_TEMPLATE = '''class AgentAutoModel < Formula
+  desc "Auto-switch agent CLI models by Mode (Cursor Agent and Codex)"
   homepage "https://github.com/x0c/cursor-mode-model"
   url "{archive}"
   sha256 "{sha}"
@@ -18,14 +18,45 @@ FORMULA_TEMPLATE = '''class CursorModeModel < Formula
 
   def install
     ldflags = "-s -w -X main.version=#{{version}}"
-    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/cursor-mode-model"
+    system "go", "build", *std_go_args(ldflags: ldflags, output: bin/"agent-auto-model"), "./cmd/agent-auto-model"
+    system "go", "build", *std_go_args(ldflags: ldflags, output: bin/"cursor-mode-model"), "./cmd/cursor-mode-model"
   end
 
   def caveats
     <<~EOS
       After install, enable PATH wrappers:
-        cursor-mode-model install
-      Requires Cursor Agent CLI: https://cursor.com/install
+        agent-auto-model install
+      Requires Cursor Agent CLI and/or Codex CLI.
+      cursor-mode-model remains a compatibility alias.
+    EOS
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{{bin}}/agent-auto-model version")
+  end
+end
+'''
+
+ALIAS_TEMPLATE = '''class CursorModeModel < Formula
+  desc "Deprecated alias of agent-auto-model"
+  homepage "https://github.com/x0c/cursor-mode-model"
+  url "{archive}"
+  sha256 "{sha}"
+  license "MIT"
+
+  depends_on "go" => :build
+
+  def install
+    ldflags = "-s -w -X main.version=#{{version}}"
+    system "go", "build", *std_go_args(ldflags: ldflags, output: bin/"agent-auto-model"), "./cmd/agent-auto-model"
+    system "go", "build", *std_go_args(ldflags: ldflags, output: bin/"cursor-mode-model"), "./cmd/cursor-mode-model"
+  end
+
+  def caveats
+    <<~EOS
+      cursor-mode-model is now agent-auto-model. This formula still installs both names.
+      After install:
+        agent-auto-model install
     EOS
   end
 
@@ -40,6 +71,12 @@ def parts(v: str) -> tuple[int, ...]:
     return tuple(int(x) for x in re.findall(r"\d+", v))
 
 
+def template_for(path: Path) -> str:
+    if path.name == "cursor-mode-model.rb":
+        return ALIAS_TEMPLATE
+    return AGENT_TEMPLATE
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("用法：bump-homebrew-formula.py <formula.rb>", file=sys.stderr)
@@ -48,10 +85,10 @@ def main() -> int:
     version = os.environ["VERSION"]
     archive = os.environ["ARCHIVE_URL"]
     sha = os.environ["SHA"]
+    tmpl = template_for(path)
 
     if not path.exists():
-        # #{{version}} / #{{bin}} 经 str.format 后变成 Homebrew 需要的 #{version} / #{bin}
-        body = FORMULA_TEMPLATE.format(archive=archive, sha=sha)
+        body = tmpl.format(archive=archive, sha=sha)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(body, encoding="utf-8")
         return 0

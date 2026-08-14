@@ -1,8 +1,8 @@
 {
   "setCurrentModel": "setCurrentModel(e,t){return p(this,void 0,void 0,(function*(){",
-  "setCurrentModelWithParameters": "setCurrentModelWithParameters(e,t,r){return p(this,void 0,void 0,(function*(){",
+  "setCurrentModelWithParameters": "setCurrentModelWithParameters(e,t,n){return p(this,void 0,void 0,(function*(){",
   "setModelFromStoredId": "setModelFromStoredId(e,t){return p(this,void 0,void 0,(function*(){",
   "getCurrentModel": "getCurrentModel(){return this.deriveCurrentModelDetails()",
   "setMetadata": "setMetadata(e,t){this.metadataStore.set(e,t)}",
-  "buildRequestedModel": "buildRequestedModel(){var e,t,r,n;const o=this.currentSelectedModel;"
+  "buildRequestedModel": "buildRequestedModel(){var e,t,n,r;const o=this.currentSelectedModel;"
 }

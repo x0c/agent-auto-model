@@ -1,8 +1,8 @@
 <!-- managed:inherited-agents:start -->
 <!-- source: /Users/geraltgraham/Codes/cursor-mode-model/AGENTS.md -->
-# cursor-mode-model
+# agent-auto-model
 
-独立工具：让 Cursor Agent CLI 在会话 Mode 变化时自动切换模型。
+独立工具：让 Cursor Agent CLI / Codex CLI 在会话 Mode 变化时自动切换模型。
 
 通用工程规范：[Go 规范](../_standards/go.md)
 
@@ -31,24 +31,26 @@
 
 <!-- managed:inherited-agents:end -->
 
-# cursor-mode-model CLI 规范
+# agent-auto-model CLI 规范
 
 ## 文档导航
 
 - `README.md` / `README.zh-CN.md`：对外安装、用法、FAQ（公开面零私有基础设施）
-- `docs/MAINTAINER_GUIDE.md`：改预加载挂钩、包装安装、锚点漂移排障、双远端发版前必读
+- `docs/MAINTAINER_GUIDE.md`：改预加载挂钩、Codex 代理、包装安装、Ubuntu login PATH、Grok fast 参数、锚点漂移排障、双远端发版前必读
 - `scripts/publish-release.sh`：本机发版收尾（Release 附件 + Homebrew 配方，防回退）
 - `scripts/bump-homebrew-formula.py`：配方 url/sha256 写入与版本回退防护
 
 ## 架构约束
 
-- 外层：PATH 前置包装（`~/.local/share/cursor-mode-model/bin/{agent,cursor-agent}`，Windows 为 `.cmd`）注入 `NODE_OPTIONS=--import=…` 后转调官方 Agent。
-- 内层：Node `registerHooks` 改写 Agent 打包 JS：模式以会话 `getMetadata('mode')` 为准（含 resume）；`buildRequestedModel` 发送前强制；模型 id 归一比较；成功后 `notifyListeners` + 写 `lastUsedModel`；默认写 `decisions.log`；`strict` 可阻断发送。
-- 锚点字符串唯一来源：`internal/assets/anchors.json`。
-- 显式 `--model`：仍可注入预加载，但设置 `CURSOR_MODE_MODEL_LOCK=1`，本会话不自动切换。
-- 总开关：`CURSOR_MODE_MODEL=0` 或配置 `enabled: false` / `config disable`。
-- 锚点漂移：故障开放（不阻断 Agent）；`status` 可诊断。
-- module 路径：`github.com/x0c/cursor-mode-model`（公开协作以 GitHub 为准）。
+- 外层：PATH 前置包装（`~/.local/share/agent-auto-model/bin/{agent,cursor-agent,codex}`，Windows 为 `.cmd`）。
+- Cursor 内层：Node `registerHooks` 改写 Agent 打包 JS。锚点唯一来源：`internal/assets/anchors.json`。
+- Codex 内层：进程内 UDS WebSocket 代理，上游 `codex app-server --stdio`，TUI 以 `codex --remote unix://<临时 sock>` 连接；改写 `turn/start` / `thread/settings/update` 的 `model`+`effort`（及 `collaborationMode.settings`）。JSON-RPC 字段集中在 `internal/runtime/codex/rewrite`。
+- 配置 v2：`runtimes.cursor` / `runtimes.codex`；v1 扁平 `models` 读入时视为 Cursor 映射。
+- 显式 `--model` / `-m`：本会话不自动切换。
+- 总开关：`AGENT_AUTO_MODEL=0`（兼容 `CURSOR_MODE_MODEL=0`）或 `config disable`。
+- Cursor 锚点漂移 / Codex 代理失败：故障开放。
+- 二进制名：`agent-auto-model`；`cursor-mode-model` 为过渡别名。Go module 仍为 `github.com/x0c/cursor-mode-model`（与公开 GitHub 仓库一致，保证 `go install`）。
+- 配置/数据目录：`~/.config/agent-auto-model`、`~/.local/share/agent-auto-model`；读配置时回退旧 `cursor-mode-model` 路径。
 
 ## Remote
 
@@ -70,13 +72,13 @@ git push github main --tags
 bash scripts/publish-release.sh vX.Y.Z
 ```
 
-公开安装渠道：Homebrew `x0c/tap/cursor-mode-model`、`install.sh`、`install.ps1`、`go install`。  
+公开安装渠道：Homebrew `x0c/tap/agent-auto-model`（`x0c/tap/cursor-mode-model` 为别名配方）、`install.sh`、`install.ps1`、`go install`。  
 CI 的 `release.yml` 只补其它平台包与配方兜底，**不得**作为唯一升级通路。
 
 用户侧升级：
 
 ```bash
-brew upgrade x0c/tap/cursor-mode-model && cursor-mode-model install
+brew upgrade x0c/tap/agent-auto-model && agent-auto-model install
 # 或
 curl -fsSL https://raw.githubusercontent.com/x0c/cursor-mode-model/main/install.sh | bash
 ```
@@ -86,5 +88,6 @@ curl -fsSL https://raw.githubusercontent.com/x0c/cursor-mode-model/main/install.
 ```bash
 go test ./...
 node --test internal/assets/register.test.mjs
+go build -ldflags "-X main.version=$(tr -d '[:space:]' < VERSION)" -o /tmp/agent-auto-model ./cmd/agent-auto-model
 go build -ldflags "-X main.version=$(tr -d '[:space:]' < VERSION)" -o /tmp/cursor-mode-model ./cmd/cursor-mode-model
 ```

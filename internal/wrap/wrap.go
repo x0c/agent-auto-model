@@ -18,7 +18,7 @@ func PrepareEnv(home string, args []string) (map[string]string, error) {
 		return out, nil
 	}
 	cfg := config.Load(home)
-	if !cfg.Enabled {
+	if !config.RuntimeEnabled(cfg, config.RuntimeCursor) {
 		return out, nil
 	}
 	register, err := assets.Ensure(home)
@@ -28,10 +28,13 @@ func PrepareEnv(home string, args []string) (map[string]string, error) {
 	if err := config.SyncRuntime(home, cfg); err != nil {
 		return nil, err
 	}
-	out[paths.EnvConfig] = paths.RuntimeConfigFile(home)
+	cfgPath := paths.RuntimeConfigFile(home)
+	out[paths.EnvConfig] = cfgPath
+	out[paths.LegacyEnvConfig] = cfgPath
 	out["NODE_OPTIONS"] = appendFlag(os.Getenv("NODE_OPTIONS"), "--import="+register)
 	if argvHasExplicitModel(args) {
 		out[paths.EnvLock] = "1"
+		out[paths.LegacyEnvLock] = "1"
 	}
 	return out, nil
 }
@@ -51,7 +54,7 @@ func appendFlag(existing, flag string) string {
 		if p == flag {
 			return strings.Join(parts, " ")
 		}
-		if strings.HasPrefix(p, "--import=") && strings.Contains(p, "cursor-mode-model") {
+		if strings.HasPrefix(p, "--import=") && (strings.Contains(p, "agent-auto-model") || strings.Contains(p, "cursor-mode-model")) {
 			return strings.Join(parts, " ")
 		}
 	}

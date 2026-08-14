@@ -16,7 +16,8 @@ cd "$ROOT"
 
 TAP_REPO="${CMM_TAP_REPO:-x0c/homebrew-tap}"
 SOURCE_REPO="${CMM_REPO:-x0c/cursor-mode-model}"
-FORMULA_NAME="cursor-mode-model.rb"
+FORMULA_NAME="agent-auto-model.rb"
+ALIAS_FORMULA_NAME="cursor-mode-model.rb"
 
 die() { echo "错误：$*" >&2; exit 1; }
 
@@ -71,13 +72,13 @@ else
     Darwin)
       GOOS=darwin
       EXT=""
-      ARCHIVE="cursor-mode-model_${VERSION}_darwin_${ARCH}.tar.gz"
+      ARCHIVE="agent-auto-model_${VERSION}_darwin_${ARCH}.tar.gz"
       SKIPPED="Linux / Windows 预编译包（需在对应平台发版或等 CI 补齐）"
       ;;
     Linux)
       GOOS=linux
       EXT=""
-      ARCHIVE="cursor-mode-model_${VERSION}_linux_${ARCH}.tar.gz"
+      ARCHIVE="agent-auto-model_${VERSION}_linux_${ARCH}.tar.gz"
       SKIPPED="macOS / Windows 预编译包（需在对应平台发版或等 CI 补齐）"
       ;;
     *) die "不支持的发版平台：$OS" ;;
@@ -86,8 +87,11 @@ else
   echo "==> 构建 ${GOOS}/${ARCH}"
   CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$ARCH" go build \
     -ldflags "-s -w -X main.version=${VERSION}" \
+    -o "$DIST/agent-auto-model${EXT}" ./cmd/agent-auto-model
+  CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$ARCH" go build \
+    -ldflags "-s -w -X main.version=${VERSION}" \
     -o "$DIST/cursor-mode-model${EXT}" ./cmd/cursor-mode-model
-  tar -C "$DIST" -czf "$DIST/$ARCHIVE" "cursor-mode-model${EXT}"
+  tar -C "$DIST" -czf "$DIST/$ARCHIVE" "agent-auto-model${EXT}" "cursor-mode-model${EXT}"
   (
     cd "$DIST"
     shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
@@ -117,21 +121,27 @@ else
   WORK="$(mktemp -d)"
   git clone -q "https://x-access-token:${TOKEN}@github.com/${TAP_REPO}.git" "$WORK/tap"
   FORMULA="$WORK/tap/Formula/${FORMULA_NAME}"
+  ALIAS_FORMULA="$WORK/tap/Formula/${ALIAS_FORMULA_NAME}"
   rc=0
   ARCHIVE_URL="$ARCHIVE_URL" SHA="$SHA" VERSION="$VERSION" \
     python3 "$ROOT/scripts/bump-homebrew-formula.py" "$FORMULA" || rc=$?
-  if [ "$rc" -eq 3 ]; then
+  alias_rc=0
+  ARCHIVE_URL="$ARCHIVE_URL" SHA="$SHA" VERSION="$VERSION" \
+    python3 "$ROOT/scripts/bump-homebrew-formula.py" "$ALIAS_FORMULA" || alias_rc=$?
+  if [ "$rc" -eq 3 ] && [ "$alias_rc" -eq 3 ]; then
     echo "==> 配方已是更新版本，跳过写入"
     rm -rf "$WORK"
-  elif [ "$rc" -ne 0 ]; then
+  elif [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
     rm -rf "$WORK"; die "改写配方失败"
+  elif [ "$alias_rc" -ne 0 ] && [ "$alias_rc" -ne 3 ]; then
+    rm -rf "$WORK"; die "改写别名配方失败"
   else
-    git -C "$WORK/tap" add "Formula/${FORMULA_NAME}"
-    if git -C "$WORK/tap" diff --cached --quiet -- "Formula/${FORMULA_NAME}"; then
+    git -C "$WORK/tap" add "Formula/${FORMULA_NAME}" "Formula/${ALIAS_FORMULA_NAME}"
+    if git -C "$WORK/tap" diff --cached --quiet -- "Formula/${FORMULA_NAME}" "Formula/${ALIAS_FORMULA_NAME}"; then
       echo "==> 配方已经指向 ${TAG}，无需改动"
     else
       git -C "$WORK/tap" -c user.name="x0c" -c user.email="x0c@users.noreply.github.com" \
-        commit -q -m "cursor-mode-model ${VERSION}"
+        commit -q -m "agent-auto-model ${VERSION}"
       git -C "$WORK/tap" push -q origin main
       echo "==> 配方已更新到 ${VERSION}"
     fi
