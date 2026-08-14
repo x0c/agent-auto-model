@@ -28,15 +28,18 @@ const (
 	defaultRepo                  = "x0c/agent-auto-model"
 	defaultChannel               = "github_release"
 	defaultCheckIntervalHours    = 24
+	userAgent                    = "agent-auto-model"
 	envSkipCheck                 = "AGENT_AUTO_MODEL_SKIP_UPDATE_CHECK"
 	envLatestReleaseURL          = "AGENT_AUTO_MODEL_UPDATE_LATEST_URL"
 	envBackgroundUpdateChild     = "AGENT_AUTO_MODEL_BACKGROUND_UPDATE_CHILD"
 	backgroundUpdatePollDuration = 5 * time.Second
+	defaultHTTPTimeout           = 30 * time.Second
+	failureRetryInterval         = 15 * time.Minute
 )
 
 var (
 	nowFunc    = time.Now
-	httpClient = &http.Client{Timeout: 8 * time.Second}
+	httpClient = &http.Client{Timeout: defaultHTTPTimeout}
 )
 
 // State 记录最近一次自更新状态。
@@ -202,7 +205,7 @@ func fetchLatestRelease() (latestRelease, error) {
 	if strings.TrimSpace(url) == "" {
 		url = fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", defaultRepo)
 	}
-	resp, err := httpClient.Get(url)
+	resp, err := httpGet(url)
 	if err != nil {
 		return latestRelease{}, fmt.Errorf("查询最新 release 失败: %w", err)
 	}
@@ -248,8 +251,17 @@ func goArchName(goarch string) string {
 	}
 }
 
+func httpGet(url string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	return httpClient.Do(req)
+}
+
 func downloadFile(url, dst string) error {
-	resp, err := httpClient.Get(url)
+	resp, err := httpGet(url)
 	if err != nil {
 		return fmt.Errorf("下载更新包失败: %w", err)
 	}
@@ -438,7 +450,11 @@ func withinCooldown(st State, hours int) bool {
 	if err != nil {
 		return false
 	}
-	return nowFunc().Sub(last) < time.Duration(hours)*time.Hour
+	wait := time.Duration(hours) * time.Hour
+	if strings.TrimSpace(st.LastError) != "" {
+		wait = failureRetryInterval
+	}
+	return nowFunc().Sub(last) < wait
 }
 
 func acquireLock(home string) (*os.File, error) {

@@ -173,7 +173,7 @@ agent-auto-model config reset
 | `config set-update-interval <小时>` | 检查更新的间隔 |
 | `config reset` | 恢复出厂映射和开关 |
 | `install` / `uninstall` | 安装或移除 PATH 包装 |
-| `update` | 立刻更新本工具 |
+| `update [--force]` | 立刻更新本工具（`--force` 忽略检查冷却） |
 
 加 `--json`（或没有终端时）会输出 JSON。
 

@@ -8,6 +8,8 @@
 
 Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGENTS.md](cli/AGENTS.md) 为准。
 
+产品目录：`~/Codes/agent-auto-model`。若会话工作区仍指向旧目录名，以这个路径为准，不要在旧路径上继续改。
+
 ## 回答用法问题（强制）
 
 用户问本工具「是不是 CLI」「是否支持关闭」「怎么改默认模型」「命令是啥」时：
@@ -56,13 +58,17 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 
 用户问「是否支持关闭 / 怎么改默认模型 / 命令是啥」时：先读 `docs/CLI_USAGE_GUIDE.md` 或 README 的 Usage / 用法节，直接贴完整命令。禁止只答「支持」，禁止为回答用法去翻 `internal/app` / `internal/config`。本项目用法问答必须贴命令。
 
+## 问「两边是不是最新 / 能不能跑」（强制）
+
+用户问本机和开发机是否最新、执行有没有问题时：两边都查，禁止只看本机版本号。核对目录名、git HEAD 与 origin/main、git remote URL、已装命令版本、`status` 里包装路径是新目录且包装生效。口径见 `docs/MAINTAINER_GUIDE.md`「包装与 PATH」「双机对齐」。
+
 ## 文档导航
 
 > 以下文档在涉及对应领域的开发、评审、排查或回答用户用法时先读取。
 
 - `docs/CLI_USAGE_GUIDE.md`：怎么用、改 Mode→模型映射、推荐配置 vs 本地自定义、推荐表通配符默认、一键关闭/打开自动切换、会话锁定、`config` 子命令
 - `README.md` / `README.zh-CN.md`：对外安装与用法（改映射、跟随推荐、关闭自动切换、会话锁定）；与 CLI_USAGE_GUIDE 命令清单对齐
-- `docs/MAINTAINER_GUIDE.md`：Cursor 挂钩、Codex 代理、PATH 包装、Ubuntu login PATH、Grok fast、锚点漂移、自更新、双远端发版、改/评审推荐表与通配符默认值
+- `docs/MAINTAINER_GUIDE.md`：Cursor 挂钩、Codex 代理、PATH 包装未生效 / 旧入口残留、双机是否最新、Ubuntu login PATH、Grok fast、锚点漂移、自更新、双远端发版、改/评审推荐表与通配符默认值
 - `scripts/publish-release.sh`：本机发版收尾（Release 附件 + Homebrew 配方，防回退）
 - `scripts/bump-homebrew-formula.py`：配方 url/sha256 写入与版本回退防护
 
@@ -77,7 +83,8 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 - 总开关：`AGENT_AUTO_MODEL=0` 或 `config disable`。
 - Cursor 锚点漂移 / Codex 代理失败：故障开放。
 - 二进制名：`agent-auto-model`。Go module：`github.com/x0c/agent-auto-model`。
-- 配置/数据目录：`~/.config/agent-auto-model`、`~/.local/share/agent-auto-model`。安装时若发现旧配置目录会一次性迁走，并清掉本机残留的旧命令名。
+- 配置/数据目录：`~/.config/agent-auto-model`、`~/.local/share/agent-auto-model`。安装时若发现旧配置目录会一次性迁走，并清掉本机残留的旧命令名与旧包装目录。
+- 公开面禁止旧名：不提供旧命令别名、旧配方、旧环境变量。旧名只允许作为本机清场（扫 PATH 标记、迁配置、删旧包装）。GitHub / Forgejo 仓库已改名后不要再建同名旧仓（会断跳转）。
 
 ## Remote
 

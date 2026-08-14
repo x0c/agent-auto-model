@@ -566,6 +566,11 @@ func runPreflightUpdate(home, cmd string) {
 	if err != nil {
 		return
 	}
+	switch cmd {
+	case "status", "config":
+		autoupdate.KickoffBackgroundCheck(home, self)
+		return
+	}
 	_ = autoupdate.MaybeCheckAndUpdate(home, Version, self, false)
 }
 

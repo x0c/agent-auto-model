@@ -1,6 +1,6 @@
 # 维护指南
 
-命令面（`config set` / `disable` / 推荐来源 / 会话锁定）见 [CLI_USAGE_GUIDE.md](CLI_USAGE_GUIDE.md)，本文只覆盖挂钩实现、包装、自更新、推荐配置拉取与发版。
+命令面（`config set` / `disable` / 推荐来源 / 会话锁定）见 [CLI_USAGE_GUIDE.md](CLI_USAGE_GUIDE.md)，本文只覆盖挂钩实现、包装、自更新、推荐配置拉取、发版与双机对齐。
 
 ## Mode→模型挂钩
 
@@ -110,8 +110,9 @@ bash -l -c 'agent-auto-model status'
 
 ## 静默自更新
 
-- 入口：普通 `agent-auto-model ...` 子命令会在执行前按间隔检查更新；包装路径会先拉起后台子进程执行 `agent-auto-model update --auto --quiet`。
-- 更新源：固定走 GitHub Releases latest API，按 `agent-auto-model_<version>_<os>_<arch>.{tar.gz|zip}` 选当前平台资产。
+- 入口：包装路径拉后台子进程 `agent-auto-model update --auto --quiet`。`status` / `config` 同样只踢后台，避免诊断命令卡在 GitHub。显式 `update`（可加 `--force`）才同步检查。
+- 更新源：固定走 GitHub Releases latest API，按 `agent-auto-model_<version>_<os>_<arch>.{tar.gz|zip}` 选当前平台资产。请求带 `User-Agent: agent-auto-model`，HTTP 超时 30s。
+- 查询失败后 15 分钟再试，不要把一次超时当成整段检查间隔（默认 24h）冷却；`status` 里的「自更新错误」会留到下次成功。立刻清掉：`agent-auto-model update --force`。
 - 安装收尾：下载并替换二进制后，必须复用 `install.Install(...)` 刷新 wrapper、运行时资产和 PATH 片段。
 - 运行态文件：`~/.local/share/agent-auto-model/autoupdate.json`。
 - 测试时可用 `AGENT_AUTO_MODEL_UPDATE_LATEST_URL` 覆盖 latest API。
@@ -152,6 +153,9 @@ bash -l -c 'agent-auto-model status'
 2. `git remote` 仍可能指向旧仓库 URL，fetch 会报仓库不存在。按 `AGENTS.md` Remote 表改 `origin` 与 `github` 后再拉。
 3. 快进到 `origin/main`，装上当前版本，清掉旧命令名 / 旧包装目录。
 4. 两边都跑 `status`：包装路径是新目录、包装生效。同步面板里「还差几十个文件」可能是别的项目的 Git 对象，不能当成这个工具没对齐。
+5. 开发机上 `go` 常常不在 PATH；用当前版本的 Linux 预编译包安装即可，不要卡在本机编译。
+6. 开发机用户没有 GitHub SSH 时，`git fetch github` 会公钥失败；以 `origin`（Forgejo）是否跟上为准即可。
+7. 核对 Homebrew 是否跟上：以 tap 仓库 `origin/main` 配方为准，不要只看 `raw.githubusercontent.com`（CDN 可能短暂落后）。
 
 用户问「这台和开发机是不是最新、能不能跑」时按上面逐项核对，禁止只报本机 version。
 

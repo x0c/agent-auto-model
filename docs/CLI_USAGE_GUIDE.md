@@ -114,6 +114,7 @@ agent-auto-model config set-update-interval <hours>
 agent-auto-model config set-models-source recommended|local
 agent-auto-model config refresh-recommended
 agent-auto-model config reset                          # 恢复推荐配置与开关
+agent-auto-model update [--force]                      # 立刻检查本工具更新（--force 忽略冷却）
 agent-auto-model uninstall                             # 卸包装
 ```
 

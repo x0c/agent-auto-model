@@ -175,7 +175,7 @@ agent-auto-model config reset
 | `config set-update-interval <hours>` | How often to check for updates |
 | `config reset` | Factory maps and switches |
 | `install` / `uninstall` | Install or remove PATH wrappers |
-| `update` | Update this tool now |
+| `update [--force]` | Update this tool now (`--force` ignores the check cooldown) |
 
 Add `--json` (or run without a TTY) for machine-readable output.
 

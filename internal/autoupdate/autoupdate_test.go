@@ -173,6 +173,144 @@ func TestParseVersionAndComparison(t *testing.T) {
 	}
 }
 
+func TestWithinCooldownRetriesSoonerAfterFailure(t *testing.T) {
+	prev := nowFunc
+	now := time.Date(2026, 8, 14, 15, 0, 0, 0, time.UTC)
+	nowFunc = func() time.Time { return now }
+	t.Cleanup(func() { nowFunc = prev })
+
+	tests := []struct {
+		name  string
+		st    State
+		hours int
+		want  bool
+	}{
+		{
+			name:  "successful check still cooling",
+			st:    State{LastCheckedAt: now.Add(-2 * time.Hour).UTC().Format(time.RFC3339)},
+			hours: 24,
+			want:  true,
+		},
+		{
+			name: "failed check past retry interval",
+			st: State{
+				LastCheckedAt: now.Add(-20 * time.Minute).UTC().Format(time.RFC3339),
+				LastError:     "timeout",
+			},
+			hours: 24,
+			want:  false,
+		},
+		{
+			name: "failed check still in retry interval",
+			st: State{
+				LastCheckedAt: now.Add(-5 * time.Minute).UTC().Format(time.RFC3339),
+				LastError:     "timeout",
+			},
+			hours: 24,
+			want:  true,
+		},
+		{
+			name:  "empty last checked is not cooling",
+			st:    State{},
+			hours: 24,
+			want:  false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := withinCooldown(tt.st, tt.hours); got != tt.want {
+				t.Fatalf("got %v want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMaybeCheckAndUpdateRetriesAfterFailedCheck(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
+
+	execPath := filepath.Join(home, "agent-auto-model")
+	if runtime.GOOS == "windows" {
+		execPath += ".exe"
+	}
+	if err := os.WriteFile(execPath, []byte("same"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.AutoUpdate.CheckIntervalHours = 24
+	if err := config.Save(home, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	prevNow, prevClient := nowFunc, httpClient
+	now := time.Date(2026, 8, 14, 15, 0, 0, 0, time.UTC)
+	nowFunc = func() time.Time { return now }
+	t.Cleanup(func() {
+		nowFunc = prevNow
+		httpClient = prevClient
+	})
+
+	if err := saveState(home, State{
+		LastCheckedAt: now.Add(-20 * time.Minute).UTC().Format(time.RFC3339),
+		LastError:     "查询最新 release 失败: timeout",
+		ManagedBinary: execPath,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		if r.Header.Get("User-Agent") != userAgent {
+			t.Errorf("User-Agent=%q", r.Header.Get("User-Agent"))
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tag_name": "v2.0.3",
+			"assets":   []map[string]string{},
+		})
+	}))
+	defer srv.Close()
+	t.Setenv(envLatestReleaseURL, srv.URL+"/latest")
+	httpClient = srv.Client()
+
+	if err := MaybeCheckAndUpdate(home, "2.0.3", execPath, false); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("失败超过重试间隔后应再次查询 latest")
+	}
+	st := loadState(home)
+	if st.LastError != "" {
+		t.Fatalf("成功后应清掉错误: %q", st.LastError)
+	}
+}
+
+func TestFetchLatestReleaseSendsUserAgent(t *testing.T) {
+	var gotUA string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		_ = json.NewEncoder(w).Encode(map[string]any{"tag_name": "v1.2.3", "assets": []any{}})
+	}))
+	defer srv.Close()
+
+	t.Setenv(envLatestReleaseURL, srv.URL+"/latest")
+	prev := httpClient
+	httpClient = srv.Client()
+	t.Cleanup(func() { httpClient = prev })
+
+	rel, err := fetchLatestRelease()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.TagName != "v1.2.3" {
+		t.Fatalf("tag=%q", rel.TagName)
+	}
+	if gotUA != userAgent {
+		t.Fatalf("User-Agent=%q", gotUA)
+	}
+}
+
 func assetNameFor(version string) string {
 	ext := ".tar.gz"
 	if runtime.GOOS == "windows" {
