@@ -158,6 +158,9 @@ func removeLeftoverCommands(home string) {
 	name := paths.LeftoverCommandName()
 	_ = os.Remove(filepath.Join(dir, name))
 	_ = os.Remove(filepath.Join(dir, name+".exe"))
+	leftover := paths.LeftoverDataDir(home)
+	_ = os.RemoveAll(filepath.Join(leftover, "bin"))
+	_ = os.RemoveAll(filepath.Join(leftover, "shell"))
 }
 
 func wrappersRemaining(home string) bool {

@@ -86,7 +86,7 @@ CLI `--mode` 只接受 `plan` / `ask`（Ask 内部是 `search`）；Agent 模式
 
 ## 包装与 PATH
 
-`install` 在 `~/.local/share/agent-auto-model/bin/` 写入包装脚本（Unix）或 `.cmd`（Windows）：`agent`、`cursor-agent`、`codex`。安装时若发现旧配置目录会一次性迁走。
+`install` 在 `~/.local/share/agent-auto-model/bin/` 写入包装脚本（Unix）或 `.cmd`（Windows）：`agent`、`cursor-agent`、`codex`。安装时若发现旧配置目录会一次性迁走，并清掉本机残留的旧包装目录与旧命令名，避免旧入口仍排在 PATH 最前。
 
 **hook 范围**：`.zshrc`、`.bashrc`、`.zprofile`、**`.profile`**。标记行为 `# agent-auto-model PATH`（安装/卸载时同时清掉本机残留的旧 PATH 标记）。
 

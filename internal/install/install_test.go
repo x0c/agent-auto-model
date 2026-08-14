@@ -94,3 +94,37 @@ func TestInstallRuntimeFilter(t *testing.T) {
 		t.Fatal("uninstall --runtime codex 应移除包装")
 	}
 }
+
+func TestInstallRemovesLeftoverWrappers(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
+	self := filepath.Join(home, "agent-auto-model")
+	if err := os.WriteFile(self, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	leftoverBin := filepath.Join(paths.LeftoverDataDir(home), "bin")
+	if err := os.MkdirAll(leftoverBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	leftoverAgent := filepath.Join(leftoverBin, "agent")
+	if err := os.WriteFile(leftoverAgent, []byte("old\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	leftoverCmd := filepath.Join(paths.LocalBinDir(home), paths.LeftoverCommandName())
+	if err := os.MkdirAll(filepath.Dir(leftoverCmd), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(leftoverCmd, []byte("old\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(home, self, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(leftoverAgent); !os.IsNotExist(err) {
+		t.Fatalf("install 应清掉旧包装目录: %v", err)
+	}
+	if _, err := os.Stat(leftoverCmd); !os.IsNotExist(err) {
+		t.Fatalf("install 应清掉旧命令名: %v", err)
+	}
+}
