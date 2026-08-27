@@ -80,6 +80,9 @@ CLI `--mode` 只接受 `plan` / `ask`（Ask 内部是 `search`）；Agent 模式
 6. 用户在 TUI `/model` 显式选了与映射不符的模型 → 本会话上锁。CLI `-m/--model` 同样上锁。
 7. `exec` / `review` / `mcp` 等子命令、以及已带 `--remote` 的调用原样透传。
 8. 代理起不来：stderr 一行告警后 exec 官方 `codex`。
+9. **模型目录只认 model/list 响应**：只有 id 对得上 TUI 发出的 `model/list` 请求的响应才能覆盖 `Available`；thread 等其它响应的 `result.data`（消息/turn id）一律忽略。否则目录被非模型 id 冲掉后，通配符解析不到会把 `gpt-*-terra` 原样写进请求，服务端 400 `model is not supported`（2026-08-27 真实事故）。
+10. **通配符解析不到必须故障开放**：跳过本次改写（decision `ev=skip reason=unresolved_glob`），绝不把原始通配符写进请求。
+11. **读上游输出禁止 bufio.Scanner**：它有单行上限，超限后 `Scan()` 静默返回 false、转发协程无声退出，TUI 永远卡在 `Starting MCP servers` 且 Esc 失灵（Codex 0.150.x 的 MCP 工具清单实测单行 7.3MB，旧 4MB 上限必炸）。必须用无上限行读取，且读取协程退出前留 stderr 日志。
 
 改写字段集中在 `internal/runtime/codex/rewrite`。审计：`~/.local/share/agent-auto-model/assets/codex-decisions.log`。
 
@@ -107,7 +110,7 @@ bash -l -c 'agent-auto-model status'
 
 - 请直接敲 `agent` 或 `cursor-agent`（经 PATH 包装）。
 - **`cursor agent` 不行**：官方 `~/.local/bin/cursor` shim 在无桌面 IDE 时会 `exec ~/.local/bin/agent`，硬编码绕过包装目录。
-- shell **函数 / alias 优先于 PATH**（如 pickup 的 `cursor-agent()`）——`status.wrapper_effective` 会反映；管理类子命令（`login` / `update` / `mcp` …）通常 passthrough 到真二进制。
+- shell **函数 / alias 优先于 PATH**（如 Corral 的 `cursor-agent()`）——`status.wrapper_effective` 会反映；管理类子命令（`login` / `update` / `mcp` …）通常 passthrough 到真二进制。
 
 ## 静默自更新
 
