@@ -107,16 +107,25 @@ func serveOne(ctx context.Context, ln net.Listener, home string, st *rewrite.Sta
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		sc := bufio.NewScanner(upOut)
-		buf := make([]byte, 0, 64*1024)
-		sc.Buffer(buf, 4<<20)
-		for sc.Scan() {
-			line := strings.TrimSpace(sc.Text())
-			if line == "" {
-				continue
+		// 不用 bufio.Scanner（有单行上限，超限会静默断流，TUI 卡死在 MCP 启动）；
+		// ReadString 支持任意长度行，0.150.x 的 MCP 工具清单等大响应可达 MB 级。
+		br := bufio.NewReaderSize(upOut, 128*1024)
+		for {
+			line, err := br.ReadString('\n')
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" {
+				if len(trimmed) > 1<<20 {
+					fmt.Fprintf(os.Stderr, "[agent-auto-model] 上行长响应 %d 字节\n", len(trimmed))
+				}
+				rewrite.ObserveOutgoing([]byte(trimmed), st)
+				if werr := wsc.WriteText(trimmed); werr != nil {
+					return
+				}
 			}
-			rewrite.ObserveOutgoing([]byte(line), st)
-			if err := wsc.WriteText(line); err != nil {
+			if err != nil {
+				if err != io.EOF {
+					fmt.Fprintf(os.Stderr, "[agent-auto-model] 读上游输出失败：%v\n", err)
+				}
 				return
 			}
 		}
@@ -126,6 +135,9 @@ func serveOne(ctx context.Context, ln net.Listener, home string, st *rewrite.Sta
 		for {
 			text, err := wsc.ReadText()
 			if err != nil {
+				if err != io.EOF {
+					fmt.Fprintf(os.Stderr, "[agent-auto-model] 读 TUI 连接失败：%v\n", err)
+				}
 				return
 			}
 			text = strings.TrimSpace(text)

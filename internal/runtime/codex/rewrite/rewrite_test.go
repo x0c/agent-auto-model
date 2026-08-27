@@ -83,6 +83,12 @@ func TestMappedModelDoesNotLock(t *testing.T) {
 	}
 }
 
+// requestModelList 模拟 TUI 发出 model/list 请求，让后续同 id 响应可被观察。
+func requestModelList(t *testing.T, st *State, id string) {
+	t.Helper()
+	_, _ = RewriteIncoming([]byte(`{"id":`+id+`,"method":"model/list","params":{}}`), st)
+}
+
 func TestInitializeInjectsExperimentalAPI(t *testing.T) {
 	st := NewState(nil, false)
 	out, _ := RewriteIncoming([]byte(`{"id":"initialize","method":"initialize","params":{"clientInfo":{"name":"codex-tui","version":"0.145.0"}}}`), st)
@@ -93,6 +99,7 @@ func TestInitializeInjectsExperimentalAPI(t *testing.T) {
 
 func TestObserveModelListAndGlob(t *testing.T) {
 	st := NewState(map[string]string{"default": "gpt-5.6-*:medium"}, false)
+	requestModelList(t, st, "3")
 	ObserveOutgoing([]byte(`{"id":3,"result":{"data":[{"id":"gpt-5.6-luna"},{"id":"gpt-5.6-terra"},{"id":"gpt-5.6-sol"}]}}`), st)
 	out, d := RewriteIncoming([]byte(`{"method":"thread/start","params":{}}`), st)
 	if d == nil || d.Expected != "gpt-5.6-terra:medium" && d.Expected != "gpt-5.6-sol:medium" {
@@ -111,6 +118,7 @@ func TestObserveModelListFamilyGlob(t *testing.T) {
 		"plan":    "gpt-*-sol:high",
 		"default": "gpt-*-terra:medium",
 	}, false)
+	requestModelList(t, st, "3")
 	ObserveOutgoing([]byte(`{"id":3,"result":{"data":[{"id":"gpt-5.4-sol"},{"id":"gpt-5.6-sol"},{"id":"gpt-5.4-terra"},{"id":"gpt-5.6-terra"}]}}`), st)
 	out, d := RewriteIncoming([]byte(`{"method":"thread/start","params":{"collaborationMode":{"mode":"plan"}}}`), st)
 	if d == nil || d.Mode != "plan" {
@@ -136,5 +144,38 @@ func TestTurnStartPlan(t *testing.T) {
 	}
 	if !strings.Contains(string(out), `"model":"gpt-5.6-sol"`) {
 		t.Fatalf("out=%s", out)
+	}
+}
+
+func TestObserveIgnoresNonModelListResponses(t *testing.T) {
+	st := NewState(map[string]string{"default": "gpt-*-terra:medium"}, false)
+	requestModelList(t, st, "3")
+	ObserveOutgoing([]byte(`{"id":3,"result":{"data":[{"id":"gpt-5.6-terra"}]}}`), st)
+	// thread 等其它响应携带 result.data（消息/turn id）不得覆盖模型目录
+	ObserveOutgoing([]byte(`{"id":7,"result":{"data":[{"id":"msg-1"},{"id":"turn-2"}]}}`), st)
+	out, d := RewriteIncoming([]byte(`{"method":"thread/start","params":{}}`), st)
+	if d == nil || d.Ev != "corrected" || d.Expected != "gpt-5.6-terra:medium" {
+		t.Fatalf("decision=%#v out=%s", d, out)
+	}
+}
+
+func TestUnresolvedGlobNotInjected(t *testing.T) {
+	st := NewState(map[string]string{"default": "gpt-*-terra:medium"}, false)
+	// 可用模型目录为空：绝不把通配符写进请求
+	out, d := RewriteIncoming([]byte(`{"method":"turn/start","params":{"model":"gpt-5.6-terra","effort":"medium"}}`), st)
+	if d == nil || d.Ev != "skip" || d.Reason != "unresolved_glob" {
+		t.Fatalf("decision=%#v", d)
+	}
+	if string(out) != `{"method":"turn/start","params":{"model":"gpt-5.6-terra","effort":"medium"}}` {
+		t.Fatalf("请求被改动：%s", out)
+	}
+}
+
+func TestModelListResponseAfterCatalogLost(t *testing.T) {
+	st := NewState(map[string]string{"default": "gpt-*-terra:medium"}, false)
+	// 未跟踪 id 的 model/list 形状响应也不采纳
+	ObserveOutgoing([]byte(`{"id":99,"result":{"data":[{"id":"gpt-5.6-terra"}]}}`), st)
+	if len(st.Available) != 0 {
+		t.Fatalf("未跟踪的响应不应进入目录：%v", st.Available)
 	}
 }

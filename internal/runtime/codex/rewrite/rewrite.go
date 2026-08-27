@@ -13,6 +13,7 @@ import (
 
 const (
 	MethodInitialize           = "initialize"
+	MethodModelList            = "model/list"
 	MethodThreadStart          = "thread/start"
 	MethodThreadResume         = "thread/resume"
 	MethodThreadSettingsUpdate = "thread/settings/update"
@@ -36,11 +37,15 @@ type State struct {
 	Plan      spec.Spec
 	Default   spec.Spec
 	Available []string
+	// modelListIDs 记录 TUI 发出的 model/list 请求 id；只有对应响应才允许覆盖
+	// Available，防止 thread 等其它响应的 result.data（消息/turn id）把模型目录
+	// 冲掉，导致通配符解析不到后原样下发（服务端 400）。
+	modelListIDs map[any]bool
 }
 
 // NewState 从配置映射构造。
 func NewState(models map[string]string, locked bool) *State {
-	st := &State{Locked: locked}
+	st := &State{Locked: locked, modelListIDs: map[any]bool{}}
 	if models != nil {
 		st.Plan = spec.Parse(models["plan"])
 		st.Default = spec.Parse(models["default"])
@@ -82,6 +87,11 @@ func RewriteIncoming(raw []byte, st *State) ([]byte, *Decision) {
 		return raw, nil
 	}
 	method := msg.Method()
+	if st != nil && method == MethodModelList {
+		if id, ok := msg["id"]; ok {
+			st.modelListIDs[id] = true
+		}
+	}
 	if method == MethodInitialize {
 		ensureExperimentalAPI(msg)
 		out, err := json.Marshal(msg)
@@ -126,7 +136,12 @@ func RewriteIncoming(raw []byte, st *State) ([]byte, *Decision) {
 	if want.Empty() {
 		return raw, &Decision{Ev: "skip", Method: method, Mode: targetMode, Reason: "no_mapping"}
 	}
-	resolved := expandSpec(want, st.Available)
+	resolved, ok := expandSpec(want, st.Available)
+	if !ok {
+		// 通配符解析不到可用模型：绝不能把原始通配符写进请求（服务端会 400），
+		// 故障开放，保持 TUI 自己的模型不动。
+		return raw, &Decision{Ev: "skip", Method: method, Mode: targetMode, Reason: "unresolved_glob"}
+	}
 	before := spec.Spec{Model: stringField(params, "model"), Effort: stringField(params, "effort")}
 	applySpec(params, resolved)
 	msg["params"] = params
@@ -143,13 +158,18 @@ func RewriteIncoming(raw []byte, st *State) ([]byte, *Decision) {
 	}
 }
 
-// ObserveOutgoing 从 server→TUI 响应里缓存 model/list。
+// ObserveOutgoing 从 server->TUI 响应里缓存 model/list。
+// 只有 id 对得上 TUI 发出的 model/list 请求的响应才会被采纳；其它响应的
+// result.data（如会话消息列表）一律忽略，防止模型目录被非模型 id 覆盖。
 func ObserveOutgoing(raw []byte, st *State) {
 	if st == nil {
 		return
 	}
 	var msg map[string]any
 	if err := json.Unmarshal(raw, &msg); err != nil {
+		return
+	}
+	if id, ok := msg["id"]; !ok || !st.modelListIDs[id] {
 		return
 	}
 	result, ok := msg["result"].(map[string]any)
@@ -222,7 +242,7 @@ func shouldLock(method string, params map[string]any, mode string, st *State) bo
 		return false
 	}
 	want := st.SpecFor(modeOr(mode, st.LastMode, "default"))
-	resolved := expandSpec(want, st.Available)
+	resolved, _ := expandSpec(want, st.Available)
 	if resolved.Model != "" && model == resolved.Model {
 		return false
 	}
@@ -266,16 +286,17 @@ func applySpec(params map[string]any, s spec.Spec) {
 	params["collaborationMode"] = cm
 }
 
-func expandSpec(s spec.Spec, available []string) spec.Spec {
+// expandSpec 展开通配符；ok=false 表示含通配符但可用模型里没有匹配项。
+func expandSpec(s spec.Spec, available []string) (spec.Spec, bool) {
 	if s.Model == "" || !strings.ContainsAny(s.Model, "*?") {
-		return s
+		return s, true
 	}
 	picked := pickLatestMatching(s.Model, available)
 	if picked == "" {
-		return s
+		return s, false
 	}
 	s.Model = picked
-	return s
+	return s, true
 }
 
 func matchGlob(pattern, value string) bool {
