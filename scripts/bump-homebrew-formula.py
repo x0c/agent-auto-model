@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 AGENT_TEMPLATE = '''class AgentAutoModel < Formula
-  desc "Auto-switch agent CLI models by Mode (Cursor Agent and Codex)"
+  desc "UNSTABLE — not recommended. Auto-switch agent CLI models by Mode"
   homepage "https://github.com/x0c/agent-auto-model"
   url "{archive}"
   sha256 "{sha}"

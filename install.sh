@@ -3,6 +3,9 @@
 # 用法：curl -fsSL https://raw.githubusercontent.com/x0c/agent-auto-model/main/install.sh | bash
 set -euo pipefail
 
+echo "警告：本项目不稳定，不建议使用。Cursor Agent / Codex 升级后挂钩容易失效。继续安装即自行承担风险。" >&2
+echo "WARNING: This project is unstable and not recommended." >&2
+
 REPO="${AAM_REPO:-x0c/agent-auto-model}"
 PREFIX="${AAM_PREFIX:-$HOME/.local}"
 BIN_DIR="${PREFIX}/bin"

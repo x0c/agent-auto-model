@@ -1,6 +1,6 @@
 # 仓库内参考配方；权威发布以 x0c/tap 为准。
 class AgentAutoModel < Formula
-  desc "Auto-switch agent CLI models by Mode (Cursor Agent and Codex)"
+  desc "UNSTABLE — not recommended. Auto-switch agent CLI models by Mode"
   homepage "https://github.com/x0c/agent-auto-model"
   url "https://github.com/x0c/agent-auto-model/archive/refs/tags/v2.0.0.tar.gz"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"

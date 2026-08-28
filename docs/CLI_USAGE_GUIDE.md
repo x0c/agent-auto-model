@@ -2,7 +2,9 @@
 
 ## 文档定位
 
-覆盖本工具的**用户命令**：查看状态、改 Mode→模型映射、推荐配置 vs 本地自定义、推荐表通配符默认、开关自动切换、会话锁定、卸载。
+**产品状态：不稳定，不建议使用。** 回答用法时先告知这一点，不要推荐新装。
+
+覆盖本工具的**用户命令**：查看状态、改 Mode→模型映射、推荐配置 vs 本地自定义、推荐表通配符默认、开关自动切换、会话锁定、卸载（含彻底清干净）。
 
 对外 [README.md](../README.md) / [README.zh-CN.md](../README.zh-CN.md) 的 **Usage / 用法** 节必须能让陌生人照着敲；本文与 README 命令清单保持一致，并多写 Agent 约束（禁止只答「支持」、禁止为回答用法翻源码）。
 
@@ -88,7 +90,7 @@ agent-auto-model config enable
 agent-auto-model config enable --runtime cursor
 ```
 
-`config disable` 与 `uninstall` 不同：前者关开关、映射还在；后者移除 PATH 包装，官方 CLI 不再被拦截。
+`config disable` 与 `uninstall` 不同：前者关开关、映射还在；后者移除 PATH 包装，官方 CLI 不再被拦截。用户要彻底卸干净时，还要删配置目录和本机命令（见「其它配置」）。
 
 环境变量总开关（当前进程）：`AGENT_AUTO_MODEL=0`。
 
@@ -115,8 +117,20 @@ agent-auto-model config set-models-source recommended|local
 agent-auto-model config refresh-recommended
 agent-auto-model config reset                          # 恢复推荐配置与开关
 agent-auto-model update [--force]                      # 立刻检查本工具更新（--force 忽略冷却）
-agent-auto-model uninstall                             # 卸包装
+agent-auto-model uninstall                             # 卸包装（配置仍留着）
 ```
+
+彻底清干净（包装 + 配置 + 本机命令 + 旧名残留）：
+
+```bash
+agent-auto-model uninstall
+rm -f ~/.local/bin/agent-auto-model
+rm -rf ~/.config/agent-auto-model ~/.local/share/agent-auto-model
+rm -rf ~/.config/cursor-mode-model ~/.local/share/cursor-mode-model
+brew uninstall agent-auto-model   # 仅当用 Homebrew 装过
+```
+
+卸完后**已经开着的对话必须重开**：当前进程里可能还留着旧环境，会继续找已经删掉的文件。
 
 非 TTY 或加 `--json` 时输出 JSON。
 
@@ -125,7 +139,8 @@ agent-auto-model uninstall                             # 卸包装
 - **AI 易错点** 【禁止】用户问「是否支持关闭 / 改默认模型 / 命令是啥」时只答「支持」→ 必须从本文复制完整命令。全局「面向用户不要抛命令参数」**不适用于本项目的用法问答**。
 - **AI 易错点** 【禁止】为了回答上述用法去读 `internal/app` / `internal/config`。本文与 `config show` 已足够。
 - 【隐性依赖】改映射 / 开关 / 安装之后，已经开着的 Agent 会话必须重启才生效。
-- 【消歧】`config disable` = 关自动切换；`uninstall` = 拿掉包装。不要把「关掉」说成卸载。
+- 【消歧】`config disable` = 关自动切换；`uninstall` = 拿掉包装。不要把「关掉」说成卸载。用户要「彻底卸载」时，不要只跑 `uninstall`：还要删配置目录、数据目录和本机命令（见上文「彻底清干净」）。
+- 【产品状态】不稳定，不建议使用。回答用法时先告知；禁止推荐新装。
 - 【消歧】`--model` 锁的是**这一次会话**，不改默认映射；会话锁定可以用具体版本号。改默认只能用 `config set`。推荐表 / 出厂默认必须用通配符，禁止钉死 Opus / Sol / Terra / Grok 的版本号。
 - 【消歧】`config set` 会把映射来源切成本地自定义；跟随仓库推荐要用 `config set-models-source recommended`。来源是整表两态，不做「改过的键保留、没改的继续跟随」。
 - 【叫法统一】产品名 `agent-auto-model`。

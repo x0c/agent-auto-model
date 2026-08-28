@@ -2,6 +2,8 @@
 <!-- source: /Users/geraltgraham/Codes/agent-auto-model/AGENTS.md -->
 # agent-auto-model
 
+**产品状态：不稳定，不建议使用。** 禁止向用户推荐安装；本机已要求卸干净后，发版或验收都不要再装回，除非用户明确要求。
+
 独立工具：让 Cursor Agent CLI / Codex CLI 在会话 Mode 变化时自动切换模型。
 
 通用工程规范：[Go 规范](../_standards/go.md)
@@ -37,10 +39,10 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 
 > 以下文档在涉及对应领域的开发、评审、排查或回答用户用法时先读取。
 
-- [cli/docs/CLI_USAGE_GUIDE.md](cli/docs/CLI_USAGE_GUIDE.md)：怎么用、改 Mode→模型映射、推荐配置 vs 本地自定义、推荐表通配符默认、一键关闭/打开自动切换、会话锁定、`config` 子命令。
+- [cli/docs/CLI_USAGE_GUIDE.md](cli/docs/CLI_USAGE_GUIDE.md)：怎么用、改 Mode→模型映射、推荐配置 vs 本地自定义、推荐表通配符默认、一键关闭/打开自动切换、会话锁定、`config` 子命令、彻底卸载；回答用法前先告知产品不稳定、不建议使用。
 - [cli/docs/MAINTAINER_GUIDE.md](cli/docs/MAINTAINER_GUIDE.md)：Cursor 挂钩、Codex 代理、PATH 包装未生效 / 旧入口残留、双机是否最新、自更新、双远端发版、锚点漂移、改/评审推荐模型配置与通配符默认值。
 - [cli/AGENTS.md](cli/AGENTS.md)：改、评审或发布本 CLI（验证命令、Remote、交付闭环）。
-- [cli/README.zh-CN.md](cli/README.zh-CN.md) / [cli/README.md](cli/README.md)：对外安装与用法（改映射、跟随推荐、关闭自动切换、会话锁定）。
+- [cli/README.zh-CN.md](cli/README.zh-CN.md) / [cli/README.md](cli/README.md)：对外安装与用法（顶部已标不稳定、不建议使用；改映射、跟随推荐、关闭自动切换、会话锁定、彻底卸载）。
 - 公开仓库：`https://github.com/x0c/agent-auto-model`
 - Forgejo 备份：`ssh://git@10.10.10.2:2222/Max/agent-auto-model.git`
 
@@ -48,7 +50,7 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 
 | 目录 | 技术栈 | 状态 |
 |---|---|---|
-| `cli/` | Go | 活跃 |
+| `cli/` | Go | 不稳定，不建议使用 |
 
 <!-- managed:inherited-agents:end -->
 
@@ -66,8 +68,8 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 
 > 以下文档在涉及对应领域的开发、评审、排查或回答用户用法时先读取。
 
-- `docs/CLI_USAGE_GUIDE.md`：怎么用、改 Mode→模型映射、推荐配置 vs 本地自定义、推荐表通配符默认、一键关闭/打开自动切换、会话锁定、`config` 子命令
-- `README.md` / `README.zh-CN.md`：对外安装与用法（改映射、跟随推荐、关闭自动切换、会话锁定）；与 CLI_USAGE_GUIDE 命令清单对齐
+- `docs/CLI_USAGE_GUIDE.md`：怎么用、改 Mode→模型映射、推荐配置 vs 本地自定义、推荐表通配符默认、一键关闭/打开自动切换、会话锁定、`config` 子命令、彻底卸载；回答用法前先告知产品不稳定、不建议使用
+- `README.md` / `README.zh-CN.md`：对外安装与用法（顶部已标不稳定、不建议使用；改映射、跟随推荐、关闭自动切换、会话锁定、彻底卸载）；与 CLI_USAGE_GUIDE 命令清单对齐
 - `docs/MAINTAINER_GUIDE.md`：Cursor 挂钩、Codex 代理、PATH 包装未生效 / 旧入口残留、双机是否最新、Ubuntu login PATH、Grok fast、锚点漂移、自更新、双远端发版、改/评审推荐表与通配符默认值
 - `scripts/publish-release.sh`：本机发版收尾（Release 附件 + Homebrew 配方，防回退）
 - `scripts/bump-homebrew-formula.py`：配方 url/sha256 写入与版本回退防护
@@ -129,7 +131,7 @@ node --test internal/assets/register.test.mjs
 go build -ldflags "-X main.version=$(tr -d '[:space:]' < VERSION)" -o /tmp/agent-auto-model ./cmd/agent-auto-model
 ```
 
-装到本机后还要看 `agent-auto-model status`：包装路径必须是 `~/.local/share/agent-auto-model/bin/`，不能只看 version。用户问开发机是否跟上，按 `docs/MAINTAINER_GUIDE.md`「双机对齐」两边都查。
+产品状态为不建议使用。本机已卸干净时，**禁止**为了验收再执行 `agent-auto-model install`。若用户明确要求验证包装是否生效，才看 `agent-auto-model status`：包装路径必须是 `~/.local/share/agent-auto-model/bin/`，不能只看 version。用户问开发机是否跟上，按 `docs/MAINTAINER_GUIDE.md`「双机对齐」两边都查。
 
 ## 领域地图（doc-init）
 

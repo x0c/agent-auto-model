@@ -9,6 +9,9 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+Write-Warning "This project is unstable and not recommended. Hooks break when Cursor Agent or Codex upgrades. Continuing is at your own risk."
+Write-Warning "本项目不稳定，不建议使用。继续安装即自行承担风险。"
+
 function Write-Step {
     param([string]$Message)
     Write-Host "agent-auto-model: $Message"

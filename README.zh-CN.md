@@ -1,5 +1,8 @@
 # agent-auto-model
 
+> [!CAUTION]
+> **不稳定，不建议使用。** Cursor Agent / Codex 升级后挂钩容易失效，自动换模型不可靠。请不要新装；已经装过的请卸载。
+
 [![CI](https://github.com/x0c/agent-auto-model/actions/workflows/test.yml/badge.svg)](https://github.com/x0c/agent-auto-model/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -150,6 +153,16 @@ agent-auto-model uninstall
 ```
 
 想让 `agent` / `codex` 完全回到官方入口时用这个。只是暂时不想自动切，用 `config disable`。
+
+连配置、数据目录和本机命令一起删掉（含旧产品名残留）：
+
+```bash
+agent-auto-model uninstall
+rm -f ~/.local/bin/agent-auto-model
+rm -rf ~/.config/agent-auto-model ~/.local/share/agent-auto-model
+rm -rf ~/.config/cursor-mode-model ~/.local/share/cursor-mode-model
+brew uninstall agent-auto-model   # 仅当用 Homebrew 装过
+```
 
 恢复出厂映射：
 

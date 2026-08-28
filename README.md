@@ -1,5 +1,8 @@
 # agent-auto-model
 
+> [!CAUTION]
+> **Unstable — not recommended.** Hooks break when Cursor Agent or Codex upgrades, so auto-switch is unreliable. Do not install. If it is already installed, uninstall it.
+
 [![CI](https://github.com/x0c/agent-auto-model/actions/workflows/test.yml/badge.svg)](https://github.com/x0c/agent-auto-model/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -152,6 +155,16 @@ agent-auto-model uninstall
 ```
 
 Use this when you want `agent` / `codex` to be the official binaries again. To only pause switching, use `config disable`.
+
+To also delete saved mappings, data, and leftover binaries (including the old product name):
+
+```bash
+agent-auto-model uninstall
+rm -f ~/.local/bin/agent-auto-model
+rm -rf ~/.config/agent-auto-model ~/.local/share/agent-auto-model
+rm -rf ~/.config/cursor-mode-model ~/.local/share/cursor-mode-model
+brew uninstall agent-auto-model   # only if you installed via Homebrew
+```
 
 Restore factory mappings:
 
