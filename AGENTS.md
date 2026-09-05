@@ -67,14 +67,12 @@ Git 仓库与源码在 [cli/](cli/)。改代码、发版、跑测试以 [cli/AGE
 
 ## 文档导航
 
-> 以下文档在涉及对应领域的开发、评审、排查或回答用户用法时先读取。
-
-- `docs/CLI_USAGE_GUIDE.md`：怎么用、改 Mode→模型映射、推荐配置 vs 本地自定义、推荐表通配符默认、一键关闭/打开自动切换、会话锁定、`config` 子命令、彻底卸载；用户说「已经禁用/卸载了但 Cursor 里还在换模型」时**必读**。不读会把关掉开关当成已卸载，或只重开对话导致后台更新把拦截装回来。回答用法前先告知产品不稳定、不建议使用
-- `docs/troubleshooting/2026-08-30-uninstalled-but-cursor-still-switches.md`：排查「卸了 / 关了但 Cursor 里还在按 Mode 换模型」、只清了一边电脑、或为双机对齐要不要再装时**必读**。不读会误判成 Cursor 自带行为，或把开发机/本机再装回去。
-- `README.md` / `README.zh-CN.md`：对外安装与用法（顶部已标不稳定、不建议使用；改映射、跟随推荐、关闭自动切换、会话锁定、彻底卸载）；与 CLI_USAGE_GUIDE 命令清单对齐
-- `docs/MAINTAINER_GUIDE.md`：Cursor 挂钩、Codex 代理、PATH 包装未生效 / 旧入口残留、双机是否最新、Ubuntu login PATH、Grok fast、锚点漂移、自更新、卸载后被自更新装回、双远端发版、改/评审推荐表与通配符默认值
-- `scripts/publish-release.sh`：本机发版收尾（Release 附件 + Homebrew 配方，防回退）
-- `scripts/bump-homebrew-formula.py`：配方 url/sha256 写入与版本回退防护
+- `docs/CLI_USAGE_GUIDE.md`：回答用法、改 Mode→模型映射、推荐配置 vs 本地自定义、通配符默认、开关自动切换、会话锁定、`config`、彻底卸载前**必读**。不读会把关掉开关当成已卸载，或只重开对话导致后台更新把拦截装回来。回答前须告知产品不稳定、不建议使用。
+- `docs/troubleshooting/2026-08-30-uninstalled-but-cursor-still-switches.md`：排查「卸了/关了但 Cursor 仍按 Mode 换模型」、只清一边、或为双机对齐要不要再装前**必读**。不读会误判成 Cursor 自带行为，或把开发机/本机再装回去。
+- `README.md` / `README.zh-CN.md`：改对外安装与用法前**必读**（须与 CLI_USAGE_GUIDE 命令清单对齐）。
+- `docs/MAINTAINER_GUIDE.md`：改/评审 Cursor 挂钩、Codex 代理、PATH 包装、双机对齐、自更新、卸载后被装回、双远端发版、推荐表与通配符默认前**必读**。不读会漏包装残留或发版回退。
+- `scripts/publish-release.sh`：本机发版收尾（Release 附件 + Homebrew 配方，防回退）前**必读**。
+- `scripts/bump-homebrew-formula.py`：改配方 url/sha256 与版本回退防护前**必读**。
 
 ## 架构约束
 

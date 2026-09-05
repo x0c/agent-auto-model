@@ -118,6 +118,7 @@ bash -l -c 'agent-auto-model status'
 - 更新源：固定走 GitHub Releases latest API，按 `agent-auto-model_<version>_<os>_<arch>.{tar.gz|zip}` 选当前平台资产。请求带 `User-Agent: agent-auto-model`，HTTP 超时 30s。
 - 查询失败后 15 分钟再试，不要把一次超时当成整段检查间隔（默认 24h）冷却；`status` 里的「自更新错误」会留到下次成功。立刻清掉：`agent-auto-model update --force`。
 - 安装收尾：下载并替换二进制后，必须复用 `install.Install(...)` 刷新 wrapper、运行时资产和 PATH 片段。
+- **卸载竞态**：包装入口每次拉起都会踢后台 `update --auto`。更新成功后再跑 `install.Install`，会把包装、PATH 片段、配置和开关写回去。若当时还有开着的 Cursor 对话，`uninstall` 删目录之后整套会复现（2026-08-28 真机：约 13 分钟后开关回到开启）。卸载前须退出 Cursor / 杀掉本工具进程；卸完不要在未退出的会话里跑 `status`（会再踢后台更新）。用户侧口径见 [CLI_USAGE_GUIDE.md](CLI_USAGE_GUIDE.md)「彻底清干净」与 [troubleshooting/2026-08-30-uninstalled-but-cursor-still-switches.md](troubleshooting/2026-08-30-uninstalled-but-cursor-still-switches.md)。本机已要求卸干净时禁止再 `install`。
 - 运行态文件：`~/.local/share/agent-auto-model/autoupdate.json`。
 - 测试时可用 `AGENT_AUTO_MODEL_UPDATE_LATEST_URL` 覆盖 latest API。
 
@@ -155,14 +156,17 @@ bash -l -c 'agent-auto-model status'
 
 1. 开发机上若还是旧目录名：把它改成新名（同步常把改名当成删+建，旧目录会带着半成品脏文件留下来）。
 2. `git remote` 仍可能指向旧仓库 URL，fetch 会报仓库不存在。按 `AGENTS.md` Remote 表改 `origin` 与 `github` 后再拉。
-3. 快进到 `origin/main`，装上当前版本，清掉旧命令名 / 旧包装目录。
-4. 两边都跑 `status`：包装路径是新目录、包装生效。同步面板里「还差几十个文件」可能是别的项目的 Git 对象，不能当成这个工具没对齐。
+3. 快进到 `origin/main`。**产品已要求卸干净时：禁止为了对齐再 install**；两边核对的是安装残留都已清除（命令不存在、配置/数据目录不在、shell 无挂钩）。尚未要求卸干净、用户明确要跑时，才装当前版本并清掉旧命令名 / 旧包装目录。
+4. 若仍允许安装：两边都跑 `status`，包装路径是新目录、包装生效。同步面板里「还差几十个文件」可能是别的项目的 Git 对象，不能当成这个工具没对齐。
 5. 开发机上 `go` 常常不在 PATH；用当前版本的 Linux 预编译包安装即可，不要卡在本机编译。
 6. 开发机用户没有 GitHub SSH 时，`git fetch github` 会公钥失败；以 `origin`（Forgejo）是否跟上为准即可。
 7. 核对 Homebrew 是否跟上：以 tap 仓库 `origin/main` 配方为准，不要只看 `raw.githubusercontent.com`（CDN 可能短暂落后）。
+8. **查/卸安装残留必须用日常账号家目录**（开发机是 `vibecoder` 的 `/home/vibecoder`）。ssh 别名默认是管理员，只看 `/root` 会误判已卸干净。命令已不在 PATH 仍可能留下数据目录（审计日志等），按 [CLI_USAGE_GUIDE.md](CLI_USAGE_GUIDE.md)「彻底清干净」整段删。
 
-用户问「这台和开发机是不是最新、能不能跑」时按上面逐项核对，禁止只报本机 version。
+用户问「这台和开发机是不是最新、能不能跑」时按上面逐项核对，禁止只报本机 version。当前口径是两边都卸干净、不要再装回。
 
 ## 独立性
 
 本仓库保持独立产品边界，不并入其它会话托管 / Agent 启动链工具。
+
+<!-- 该文档整理/压缩于 2026-09-05 -->

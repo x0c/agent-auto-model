@@ -122,6 +122,8 @@ agent-auto-model uninstall                             # 卸包装（配置仍�
 
 彻底清干净（包装 + 配置 + 本机命令 + 旧名残留）：
 
+先**完全退出 Cursor** 和所有还开着的相关终端，再跑：
+
 ```bash
 agent-auto-model uninstall
 rm -f ~/.local/bin/agent-auto-model
@@ -130,7 +132,16 @@ rm -rf ~/.config/cursor-mode-model ~/.local/share/cursor-mode-model
 brew uninstall agent-auto-model   # 仅当用 Homebrew 装过
 ```
 
-卸完后**已经开着的对话必须重开**：当前进程里可能还留着旧环境，会继续找已经删掉的文件。
+卸完后必须退出 Cursor 再打开，**只重开这一条对话不够**。当前进程里还留着旧环境，会继续换模型；更糟的是后台自动更新成功后会再执行一次安装，把拦截入口和开关都写回去（2026-08-28 真机：卸干净约 13 分钟后整套复现）。
+
+**卸包装会拿走用户敲的 `agent` 这个名字。** 官方二进制叫 `cursor-agent`，Mac 上往往只有包装在 PATH 上叫 `agent`。卸完必须立刻把官方入口补回 `~/.local/bin/agent`（及 `cursor-agent`），指向当前版本目录里的官方启动脚本，禁止让用户面对 `command not found: agent`。2026-08-30 真机事故：卸完用户敲 `agent` 为空，误以为 Cursor 被卸掉。核对：
+
+```bash
+command -v agent
+agent --version
+```
+
+应命中 `~/.local/bin/agent`，版本为已安装的 Cursor Agent CLI。用户说「已经禁用/卸载了但 Cursor 里还在换模型」时按这条查，见 [troubleshooting/2026-08-30-uninstalled-but-cursor-still-switches.md](troubleshooting/2026-08-30-uninstalled-but-cursor-still-switches.md)。禁止为了验收再装回自动换模型。
 
 非 TTY 或加 `--json` 时输出 JSON。
 
@@ -140,6 +151,7 @@ brew uninstall agent-auto-model   # 仅当用 Homebrew 装过
 - **AI 易错点** 【禁止】为了回答上述用法去读 `internal/app` / `internal/config`。本文与 `config show` 已足够。
 - 【隐性依赖】改映射 / 开关 / 安装之后，已经开着的 Agent 会话必须重启才生效。
 - 【消歧】`config disable` = 关自动切换；`uninstall` = 拿掉包装。不要把「关掉」说成卸载。用户要「彻底卸载」时，不要只跑 `uninstall`：还要删配置目录、数据目录和本机命令（见上文「彻底清干净」）。
+- **AI 易错点** 【禁止】用户说「已经禁用/卸载了但 Cursor 里还在换模型」时答「已经关了」或为了验收再 `install`。先按「彻底清干净」查是否被自更新装回；卸之前先退出 Cursor，卸完用新登录壳确认命令不存在。卸完若 `agent` 找不到，立刻补官方入口，禁止当成 Cursor 被卸掉。
 - 【产品状态】不稳定，不建议使用。回答用法时先告知；禁止推荐新装。
 - 【消歧】`--model` 锁的是**这一次会话**，不改默认映射；会话锁定可以用具体版本号。改默认只能用 `config set`。推荐表 / 出厂默认必须用通配符，禁止钉死 Opus / Sol / Terra / Grok 的版本号。
 - 【消歧】`config set` 会把映射来源切成本地自定义；跟随仓库推荐要用 `config set-models-source recommended`。来源是整表两态，不做「改过的键保留、没改的继续跟随」。
@@ -166,10 +178,13 @@ go test ./internal/app ./internal/config ./internal/recommended ./internal/wrap
 
 ## 领域引用
 
-- [MAINTAINER_GUIDE.md](MAINTAINER_GUIDE.md)：Cursor 发送前强制、Codex 代理改写、PATH 包装、自更新、发版。改那些实现时联读，不要把命令面细节再抄一遍。
+- [MAINTAINER_GUIDE.md](MAINTAINER_GUIDE.md)：Cursor 发送前强制、Codex 代理改写、PATH 包装、自更新、卸载后被自更新装回、发版。改那些实现时联读，不要把命令面细节再抄一遍。
+- [troubleshooting/2026-08-30-uninstalled-but-cursor-still-switches.md](troubleshooting/2026-08-30-uninstalled-but-cursor-still-switches.md)：排查「卸了 / 关了但 Cursor 里还在换模型」。
 
 ## 待补充
 
 - Cursor 包装是否应同样识别 `-m`（README 曾把 `-m` 写成两端通用；代码上只有 Codex 认短参数）。来源：2026-08-14 对照 `internal/wrap` 与 `internal/runtime/codex/find.go`。
 
 <!-- 该文档由 doc-init 生成于 2026-08-14；定位：Agent 回答用法 / 改命令面与配置前的快速参考 -->
+
+<!-- 该文档整理/压缩于 2026-09-05 -->
