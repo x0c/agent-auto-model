@@ -101,7 +101,16 @@ func MaybeCheckAndUpdate(home, currentVersion, executablePath string, force bool
 	}
 	lock, err := acquireLock(home)
 	if err != nil {
-		return nil
+		// 他人持锁：跳过本次检查，但写入状态让 status 可见，避免永久「假健康」。
+		if os.IsExist(err) {
+			_ = saveState(home, mutateState(loadState(home), func(st *State) {
+				st.ManagedBinary = target
+				st.LastCheckedAt = nowFunc().UTC().Format(time.RFC3339)
+				st.LastError = "自更新检查跳过：锁已被占用"
+			}))
+			return recErr
+		}
+		return saveError(home, target, fmt.Errorf("获取自更新锁失败: %w", err))
 	}
 	defer releaseLock(lock)
 

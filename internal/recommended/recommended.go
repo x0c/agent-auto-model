@@ -218,7 +218,15 @@ func refresh(home string, force bool, timeout time.Duration) error {
 	}
 	lock, err := acquireLock(home)
 	if err != nil {
-		return nil
+		// 他人持锁或建锁失败：写入缓存 LastError，避免静默永久停刷。
+		c := loadCache(home)
+		if os.IsExist(err) {
+			c.LastCheckedAt = nowFunc().UTC().Format(time.RFC3339)
+			c.LastError = "推荐配置刷新跳过：锁已被占用"
+			_ = saveCache(home, c)
+			return nil
+		}
+		return saveError(home, c, fmt.Errorf("获取推荐配置锁失败: %w", err))
 	}
 	defer releaseLock(lock)
 

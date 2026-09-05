@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/x0c/agent-auto-model/internal/runtime/codex/spec"
 )
@@ -31,7 +32,9 @@ type Decision struct {
 }
 
 // State 会话改写状态。
+// 上下行两路 goroutine 会并发访问，所有读写经 mu 串行。
 type State struct {
+	mu        sync.Mutex
 	Locked    bool
 	LastMode  string
 	Plan      spec.Spec
@@ -82,6 +85,10 @@ func (m Message) Params() map[string]any {
 
 // RewriteIncoming 改写 TUI→server 的请求。返回改写后的消息与决策（可能为空）。
 func RewriteIncoming(raw []byte, st *State) ([]byte, *Decision) {
+	if st != nil {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+	}
 	var msg Message
 	if err := json.Unmarshal(raw, &msg); err != nil {
 		return raw, nil
@@ -165,6 +172,8 @@ func ObserveOutgoing(raw []byte, st *State) {
 	if st == nil {
 		return
 	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
 	var msg map[string]any
 	if err := json.Unmarshal(raw, &msg); err != nil {
 		return

@@ -2,7 +2,9 @@ package rewrite
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -179,3 +181,28 @@ func TestModelListResponseAfterCatalogLost(t *testing.T) {
 		t.Fatalf("未跟踪的响应不应进入目录：%v", st.Available)
 	}
 }
+
+// TestStateConcurrentObserveAndRewrite 模拟 proxy 上下行两路并发碰 State。
+// 配合 go test -race 捕获无锁时的 map/slice 竞态。
+func TestStateConcurrentObserveAndRewrite(t *testing.T) {
+	st := NewState(map[string]string{"default": "gpt-*-terra:medium"}, false)
+	const n = 200
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < n; i++ {
+			id := strconv.Itoa(i%7 + 1)
+			_, _ = RewriteIncoming([]byte(`{"id":`+id+`,"method":"model/list","params":{}}`), st)
+			ObserveOutgoing([]byte(`{"id":`+id+`,"result":{"data":[{"id":"gpt-5.6-terra"},{"id":"gpt-5.6-sol"}]}}`), st)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < n; i++ {
+			_, _ = RewriteIncoming([]byte(`{"method":"thread/start","params":{"collaborationMode":{"mode":"default"}}}`), st)
+		}
+	}()
+	wg.Wait()
+}
+

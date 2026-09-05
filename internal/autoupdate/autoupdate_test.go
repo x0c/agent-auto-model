@@ -129,6 +129,48 @@ func TestMaybeCheckAndUpdateHonorsCooldown(t *testing.T) {
 	}
 }
 
+func TestMaybeCheckAndUpdateRecordsLockBusy(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
+
+	execPath := filepath.Join(home, "agent-auto-model")
+	if err := os.WriteFile(execPath, []byte("bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.Save(home, config.Default()); err != nil {
+		t.Fatal(err)
+	}
+
+	lockPath := paths.AutoUpdateLockFile(home)
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = f.Close()
+		_ = os.Remove(lockPath)
+	}()
+
+	prevNow := nowFunc
+	nowFunc = func() time.Time { return time.Date(2026, 9, 5, 15, 0, 0, 0, time.UTC) }
+	defer func() { nowFunc = prevNow }()
+
+	if err := MaybeCheckAndUpdate(home, "2.0.7", execPath, true); err != nil {
+		t.Fatalf("锁占用应跳过而非返回错误: %v", err)
+	}
+	st := loadState(home)
+	if !strings.Contains(st.LastError, "锁已被占用") {
+		t.Fatalf("期望 LastError 可见锁占用，got %q", st.LastError)
+	}
+	if st.LastCheckedAt == "" {
+		t.Fatal("应写入 LastCheckedAt")
+	}
+}
+
 func TestLoadRuntimeStatusReflectsConfigAndState(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -155,3 +156,44 @@ func readUnmaskedFrame(r io.Reader) (byte, []byte, error) {
 	}
 	return opcode, payload, nil
 }
+
+// TestConcurrentWriteText 并发写出多帧，写锁保证帧边界不交错。
+func TestConcurrentWriteText(t *testing.T) {
+	c1, c2 := net.Pipe()
+	defer c1.Close()
+	defer c2.Close()
+	conn := &Conn{nc: c1, r: bufio.NewReader(c1)}
+
+	const n = 50
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			msg := strings.Repeat("x", 8) + string(rune('A'+i%26))
+			if err := conn.WriteText(msg); err != nil {
+				t.Errorf("WriteText: %v", err)
+			}
+		}(i)
+	}
+	go func() {
+		wg.Wait()
+		_ = c1.Close()
+	}()
+
+	got := 0
+	for got < n {
+		opcode, payload, err := readUnmaskedFrame(c2)
+		if err != nil {
+			t.Fatalf("读第 %d 帧失败: %v", got, err)
+		}
+		if opcode != 1 {
+			t.Fatalf("opcode=%d", opcode)
+		}
+		if len(payload) != 9 {
+			t.Fatalf("帧长异常（可能交错）: %d payload=%q", len(payload), payload)
+		}
+		got++
+	}
+}
+

@@ -7,7 +7,7 @@ import (
 )
 
 // 由 -ldflags 注入。
-var version = "2.0.7"
+var version = "2.0.8"
 
 func main() {
 	if version != "" {

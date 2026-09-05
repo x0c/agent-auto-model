@@ -10,14 +10,17 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 )
 
 const guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 // Conn 已完成握手的 WebSocket 连接（服务端视角，写出帧不掩码）。
+// 上行 WriteText 与读侧 pong/close 会并发写，writeMu 串行化整帧写出。
 type Conn struct {
-	nc net.Conn
-	r  *bufio.Reader
+	nc      net.Conn
+	r       *bufio.Reader
+	writeMu sync.Mutex
 }
 
 // Handshake 在已接受的 Unix/TCP 连接上完成 HTTP Upgrade。
@@ -143,6 +146,8 @@ func (c *Conn) readFrame() (byte, []byte, error) {
 }
 
 func (c *Conn) writeFrame(opcode byte, payload []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 	n := len(payload)
 	var hdr []byte
 	hdr = append(hdr, 0x80|opcode)
