@@ -164,6 +164,8 @@ rm -rf ~/.config/cursor-mode-model ~/.local/share/cursor-mode-model
 brew uninstall agent-auto-model   # 仅当用 Homebrew 装过
 ```
 
+先退出 Cursor 再跑上面的命令；卸完必须完全退出 Cursor 再打开，只关这一条对话不够。否则后台自动更新可能把拦截入口重新装回来。
+
 恢复出厂映射：
 
 ```bash

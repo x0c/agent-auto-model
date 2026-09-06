@@ -166,6 +166,8 @@ rm -rf ~/.config/cursor-mode-model ~/.local/share/cursor-mode-model
 brew uninstall agent-auto-model   # only if you installed via Homebrew
 ```
 
+Quit Cursor before running the commands above, then fully quit Cursor again after uninstall. Restarting a single chat is not enough: a still-open session can let silent auto-update reinstall the wrappers.
+
 Restore factory mappings:
 
 ```bash

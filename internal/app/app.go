@@ -442,7 +442,6 @@ func cmdConfig(args []string) int {
 		}
 		return configMutated(wantJSON, cfg, hint, false)
 	case "refresh-recommended":
-		rest = stripFlag(rest, "--json")
 		err := recommended.MaybeRefresh(home, true)
 		cfg := config.LoadEffective(home)
 		if cfg.ModelsSource == config.ModelsSourceRecommended {

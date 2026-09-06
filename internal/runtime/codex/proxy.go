@@ -3,6 +3,7 @@ package codex
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +17,38 @@ import (
 	"github.com/x0c/agent-auto-model/internal/runtime/codex/rewrite"
 	"github.com/x0c/agent-auto-model/internal/runtime/codex/ws"
 )
+
+func writeCorralClaim(raw []byte) {
+	path := os.Getenv("CORRAL_CODEX_CLAIM_PATH")
+	if path == "" {
+		return
+	}
+	var msg map[string]any
+	if json.Unmarshal(raw, &msg) != nil {
+		return
+	}
+	params, _ := msg["params"].(map[string]any)
+	if msg["method"] != "thread/started" || params == nil {
+		return
+	}
+	thread, _ := params["thread"].(map[string]any)
+	if thread == nil {
+		thread = params
+	}
+	id, _ := thread["id"].(string)
+	rollout, _ := thread["path"].(string)
+	if id == "" || rollout == "" {
+		return
+	}
+	b, err := json.Marshal(map[string]any{"thread_id": id, "rollout_path": rollout, "pid": os.Getpid()})
+	if err != nil {
+		return
+	}
+	tmp := path + ".tmp"
+	if os.WriteFile(tmp, b, 0600) == nil {
+		_ = os.Rename(tmp, path)
+	}
+}
 
 func runProxiedTUI(home, real string, args []string, locked bool) error {
 	cfg := config.LoadEffective(home)
@@ -118,6 +151,7 @@ func serveOne(ctx context.Context, ln net.Listener, home string, st *rewrite.Sta
 					fmt.Fprintf(os.Stderr, "[agent-auto-model] 上行长响应 %d 字节\n", len(trimmed))
 				}
 				rewrite.ObserveOutgoing([]byte(trimmed), st)
+				writeCorralClaim([]byte(trimmed))
 				if werr := wsc.WriteText(trimmed); werr != nil {
 					return
 				}
